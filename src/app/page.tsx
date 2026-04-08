@@ -26,6 +26,7 @@ export default function Home() {
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [rightTab, setRightTab] = useState<'queue' | 'playlist'>('queue')
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
+  const [clearingQueue, setClearingQueue] = useState(false)
   const playerRef = useRef<YT.Player | null>(null)
   const playerContainerRef = useRef<HTMLDivElement>(null)
   const isPlayingRef = useRef(isPlaying)
@@ -155,6 +156,17 @@ export default function Home() {
   async function handleRemove(id: number) {
     await fetch(`/api/queue/${id}`, { method: 'DELETE' })
     await fetchQueue()
+  }
+
+  async function handleClearQueue() {
+    if (!confirm('ล้างคิวเพลงทั้งหมด? (เพลงที่กำลังเล่นจะยังคงอยู่)')) return
+    setClearingQueue(true)
+    try {
+      await fetch('/api/queue/clear', { method: 'DELETE' })
+      await fetchQueue()
+    } finally {
+      setClearingQueue(false)
+    }
   }
 
   function handleFullscreen() {
@@ -292,6 +304,18 @@ export default function Home() {
           {/* Queue tab */}
           {rightTab === 'queue' && (
             <div className="flex-1 overflow-y-auto p-4">
+              {/* Clear queue button */}
+              {queue.some((q) => q.status === 'queued' || q.status === 'done') && (
+                <div className="flex justify-end mb-3">
+                  <button
+                    onClick={handleClearQueue}
+                    disabled={clearingQueue}
+                    className="text-xs text-gray-500 hover:text-red-400 border border-gray-700 hover:border-red-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+                  >
+                    {clearingQueue ? '⏳ กำลังล้าง...' : '🗑 ล้างคิว'}
+                  </button>
+                </div>
+              )}
               {loading ? (
                 <div className="flex items-center justify-center h-40 text-gray-500 gap-2">
                   <span className="animate-spin text-xl">⏳</span>

@@ -28,6 +28,7 @@ export default function RemotePage() {
   const [addSuccess, setAddSuccess] = useState('')
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
   const [isPlaying, setIsPlaying] = useState(true) // optimistic UI
+  const [clearingQueue, setClearingQueue] = useState(false)
 
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
   const hasNext = queue.some((q) => q.status === 'queued')
@@ -57,6 +58,16 @@ export default function RemotePage() {
 
   async function handleRemove(id: number) {
     await fetch(`/api/queue/${id}`, { method: 'DELETE' })
+  }
+
+  async function handleClearQueue() {
+    if (!confirm('ล้างคิวเพลงทั้งหมด? (เพลงที่กำลังเล่นจะยังคงอยู่)')) return
+    setClearingQueue(true)
+    try {
+      await fetch('/api/queue/clear', { method: 'DELETE' })
+    } finally {
+      setClearingQueue(false)
+    }
   }
 
   async function handleAddUrl(e: React.FormEvent) {
@@ -174,6 +185,19 @@ export default function RemotePage() {
             </form>
             {addError && <p className="text-red-400 text-xs">{addError}</p>}
             {addSuccess && <p className="text-green-400 text-xs">{addSuccess}</p>}
+
+            {/* Clear queue */}
+            {queue.some((q) => q.status === 'queued' || q.status === 'done') && (
+              <div className="flex justify-end">
+                <button
+                  onClick={handleClearQueue}
+                  disabled={clearingQueue}
+                  className="text-xs text-gray-500 hover:text-red-400 border border-gray-700 hover:border-red-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 active:scale-95"
+                >
+                  {clearingQueue ? '⏳ กำลังล้าง...' : '🗑 ล้างคิว'}
+                </button>
+              </div>
+            )}
 
             {/* Queue list */}
             {loading ? (

@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export async function DELETE() {
   try {
     const sql = getDb()
-    await sql`DELETE FROM queue WHERE status = 'done'`
+    await sql`DELETE FROM queue WHERE status IN ('done', 'queued')`
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error(err)
