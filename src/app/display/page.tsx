@@ -17,7 +17,6 @@ export default function DisplayPage() {
   useEffect(() => { queueRef.current = queue }, [queue])
 
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
-  const nextSong = queue.find((q) => q.status === 'queued') ?? null
 
   const fetchQueue = useCallback(async () => {
     const res = await fetch('/api/queue')
@@ -82,33 +81,6 @@ export default function DisplayPage() {
         />
       </div>
 
-      {/* Bottom overlay — now playing + next */}
-      {currentSong && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-8 py-6">
-          <div className="flex items-end justify-between gap-6">
-            {/* Now playing */}
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-              <div className="min-w-0">
-                <p className="text-white font-bold text-2xl truncate leading-tight">
-                  {currentSong.title}
-                </p>
-                <p className="text-gray-400 text-base mt-0.5">
-                  🎤 {currentSong.requested_by}
-                </p>
-              </div>
-            </div>
-
-            {/* Next song */}
-            {nextSong && (
-              <div className="text-right flex-shrink-0 hidden sm:block">
-                <p className="text-gray-500 text-sm">ถัดไป</p>
-                <p className="text-gray-300 text-base truncate max-w-xs">{nextSong.title}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Top bar — song title + remote URL + fullscreen button */}
       <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-4 bg-gradient-to-b from-black/80 to-transparent">
