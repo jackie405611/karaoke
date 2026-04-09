@@ -63,7 +63,7 @@ export function usePlayerSSE(
     }
 
     // Poll DB for player commands every 500 ms — reliable across all process configs
-    const poll = async () => {
+    const pollCommand = async () => {
       try {
         const res = await fetch('/api/player/state')
         if (!res.ok) return
@@ -80,12 +80,17 @@ export function usePlayerSSE(
       } catch {}
     }
 
-    poll()
-    const interval = setInterval(poll, 500)
+    // Backup queue poll every 2s — ensures display stays in sync even if SSE EventEmitter drops
+    const pollQueue = () => onQueueUpdateRef.current()
+
+    pollCommand()
+    const commandInterval = setInterval(pollCommand, 500)
+    const queueInterval   = setInterval(pollQueue, 2000)
 
     return () => {
       es.close()
-      clearInterval(interval)
+      clearInterval(commandInterval)
+      clearInterval(queueInterval)
     }
   }, [])
 }

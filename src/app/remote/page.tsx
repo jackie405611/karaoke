@@ -33,7 +33,7 @@ export default function RemotePage() {
   const [addError, setAddError]   = useState('')
   const [addSuccess, setAddSuccess] = useState('')
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
-  const [isPlaying, setIsPlaying] = useState(true)
+  const [isPlaying, setIsPlaying] = useState(false)
   const [clearingQueue, setClearingQueue] = useState(false)
   const [showUrlChoice, setShowUrlChoice] = useState(false)
 
@@ -60,8 +60,8 @@ export default function RemotePage() {
     await playerCmd(next ? 'play' : 'pause')
   }
 
-  async function handleNext() { await playerCmd('next') }
-  async function handlePrev() { await playerCmd('prev') }
+  async function handleNext() { await playerCmd('next'); fetchQueue() }
+  async function handlePrev() { await playerCmd('prev'); fetchQueue() }
 
   async function handlePlayNow(id: number) {
     await fetch(`/api/queue/${id}`, {
@@ -69,10 +69,12 @@ export default function RemotePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'play_now' }),
     })
+    fetchQueue()
   }
 
   async function handleRemove(id: number) {
     await fetch(`/api/queue/${id}`, { method: 'DELETE' })
+    fetchQueue()
   }
 
   async function handleClearQueue() {
@@ -80,6 +82,7 @@ export default function RemotePage() {
     setClearingQueue(true)
     try {
       await fetch('/api/queue/clear', { method: 'DELETE' })
+      fetchQueue()
     } finally {
       setClearingQueue(false)
     }
@@ -119,6 +122,7 @@ export default function RemotePage() {
         setAddSuccess(data.batch ? `✅ เพิ่ม ${data.added} เพลงแล้ว` : '✅ เพิ่มเพลงแล้ว')
         setTimeout(() => setAddSuccess(''), 3000)
         setTab('queue')
+        fetchQueue()
       }
     } catch {
       setAddError('ไม่สามารถเชื่อมต่อได้')
