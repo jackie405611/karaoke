@@ -49,15 +49,43 @@ export function usePlayerSSE(
   onQueueUpdateRef.current = onQueueUpdate
   onPlayerCommandRef.current = onPlayerCommand
 
+  // Track the last seq we acted on so we only fire once per command
+  const lastSeqRef = useRef<number>(-1)
+
   useEffect(() => {
+    // SSE — used only for queue-update notifications
     const es = new EventSource('/api/events')
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'queue-update') onQueueUpdateRef.current()
-        if (data.type === 'player-command') onPlayerCommandRef.current(data.command)
       } catch {}
     }
-    return () => es.close()
+
+    // Poll DB for player commands every 500 ms — reliable across all process configs
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/player/state')
+        if (!res.ok) return
+        const { command, seq } = await res.json() as { command: 'play' | 'pause'; seq: number }
+        if (lastSeqRef.current === -1) {
+          // First poll — just record current seq, don't replay old command
+          lastSeqRef.current = seq
+          return
+        }
+        if (seq !== lastSeqRef.current) {
+          lastSeqRef.current = seq
+          onPlayerCommandRef.current(command)
+        }
+      } catch {}
+    }
+
+    poll()
+    const interval = setInterval(poll, 500)
+
+    return () => {
+      es.close()
+      clearInterval(interval)
+    }
   }, [])
 }

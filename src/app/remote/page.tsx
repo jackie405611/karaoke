@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { useQueue } from '@/hooks/useQueue'
 import SearchPanel from '@/components/SearchPanel'
@@ -35,6 +35,16 @@ export default function RemotePage() {
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
   const [isPlaying, setIsPlaying] = useState(true)
   const [clearingQueue, setClearingQueue] = useState(false)
+
+  // Reset play-state assumption whenever a new song starts
+  const currentSongId = currentSong?.id ?? null
+  const prevSongIdRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (currentSongId !== prevSongIdRef.current) {
+      prevSongIdRef.current = currentSongId
+      if (currentSongId !== null) setIsPlaying(true)
+    }
+  }, [currentSongId])
   const [showUrlChoice, setShowUrlChoice] = useState(false)
 
   const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/.test(url)

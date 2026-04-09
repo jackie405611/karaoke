@@ -39,3 +39,12 @@ CREATE TABLE IF NOT EXISTS playlist_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlist_id);
+
+-- Singleton row — stores latest player command so display can poll instead of relying on SSE
+CREATE TABLE IF NOT EXISTS player_state (
+  id         INT  PRIMARY KEY DEFAULT 1,
+  command    TEXT CHECK(command IN ('play', 'pause')),
+  seq        BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO player_state (id, command, seq) VALUES (1, 'play', 0) ON CONFLICT DO NOTHING;

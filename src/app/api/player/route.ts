@@ -7,13 +7,21 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: NextRequest) {
   try {
     const { action } = await req.json()
+    const sql = getDb()
 
     if (action === 'play' || action === 'pause') {
+      // Persist to DB so display can poll reliably (EventEmitter is process-local and may miss)
+      await sql`
+        INSERT INTO player_state (id, command, seq, updated_at)
+        VALUES (1, ${action}, 1, NOW())
+        ON CONFLICT (id) DO UPDATE
+          SET command    = EXCLUDED.command,
+              seq        = player_state.seq + 1,
+              updated_at = NOW()
+      `
       notifyPlayerCommand(action)
       return NextResponse.json({ success: true })
     }
-
-    const sql = getDb()
 
     if (action === 'next') {
       const playing = await sql`SELECT id FROM queue WHERE status = 'playing' LIMIT 1`
