@@ -35,6 +35,11 @@ export default function RemotePage() {
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
   const [isPlaying, setIsPlaying] = useState(true)
   const [clearingQueue, setClearingQueue] = useState(false)
+  const [showUrlChoice, setShowUrlChoice] = useState(false)
+
+  const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/.test(url)
+
+  const currentSong = queue.find((q) => q.status === 'playing') ?? null
 
   // Reset play-state assumption whenever a new song starts
   const currentSongId = currentSong?.id ?? null
@@ -45,11 +50,6 @@ export default function RemotePage() {
       if (currentSongId !== null) setIsPlaying(true)
     }
   }, [currentSongId])
-  const [showUrlChoice, setShowUrlChoice] = useState(false)
-
-  const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/.test(url)
-
-  const currentSong = queue.find((q) => q.status === 'playing') ?? null
   const hasNext     = queue.some((q) => q.status === 'queued')
   const hasPrev     = queue.some((q) => q.status === 'done')
   const queueCount  = queue.filter((q) => q.status !== 'done').length
