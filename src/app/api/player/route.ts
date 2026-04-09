@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const { action } = await req.json()
     const sql = getDb()
 
-    if (action === 'play' || action === 'pause') {
+    if (action === 'play' || action === 'pause' || action === 'restart') {
       // Persist to DB so display can poll reliably (EventEmitter is process-local and may miss).
       // Wrapped in try/catch — if player_state table hasn't been migrated yet, EventEmitter fallback still works.
       try {

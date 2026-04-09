@@ -51,7 +51,6 @@ export default function RemotePage() {
     }
   }, [currentSongId])
   const hasNext     = queue.some((q) => q.status === 'queued')
-  const hasPrev     = queue.some((q) => q.status === 'done')
   const queueCount  = queue.filter((q) => q.status !== 'done').length
 
   async function handlePlayPause() {
@@ -60,8 +59,8 @@ export default function RemotePage() {
     await playerCmd(next ? 'play' : 'pause')
   }
 
-  async function handleNext() { await playerCmd('next'); fetchQueue() }
-  async function handlePrev() { await playerCmd('prev'); fetchQueue() }
+  async function handleNext()    { await playerCmd('next');    fetchQueue() }
+  async function handleRestart() { await playerCmd('restart') }
 
   async function handlePlayNow(id: number) {
     await fetch(`/api/queue/${id}`, {
@@ -206,12 +205,12 @@ export default function RemotePage() {
         {/* Player Controls */}
         <div className="flex items-center justify-center gap-5 px-4 pb-4">
           <button
-            onClick={handlePrev}
-            disabled={!hasPrev}
-            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
-            aria-label="เพลงก่อนหน้า"
+            onClick={handleRestart}
+            disabled={!currentSong}
+            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-xl transition-all active:scale-[0.93]"
+            aria-label="เริ่มเพลงใหม่"
           >
-            ⏮
+            ↺
           </button>
           <button
             onClick={handlePlayPause}

@@ -42,7 +42,7 @@ export function useQueue() {
 
 export function usePlayerSSE(
   onQueueUpdate: () => void,
-  onPlayerCommand: (cmd: 'play' | 'pause') => void
+  onPlayerCommand: (cmd: 'play' | 'pause' | 'restart') => void
 ) {
   const onQueueUpdateRef = useRef(onQueueUpdate)
   const onPlayerCommandRef = useRef(onPlayerCommand)
@@ -67,7 +67,7 @@ export function usePlayerSSE(
       try {
         const res = await fetch('/api/player/state')
         if (!res.ok) return
-        const { command, seq } = await res.json() as { command: 'play' | 'pause'; seq: number }
+        const { command, seq } = await res.json() as { command: 'play' | 'pause' | 'restart'; seq: number }
         if (lastSeqRef.current === -1) {
           // First poll — just record current seq, don't replay old command
           lastSeqRef.current = seq

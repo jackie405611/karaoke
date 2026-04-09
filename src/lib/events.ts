@@ -8,7 +8,7 @@ export function notifyQueueUpdate() {
   emitter.emit('queue-update')
 }
 
-export function notifyPlayerCommand(command: 'play' | 'pause') {
+export function notifyPlayerCommand(command: 'play' | 'pause' | 'restart') {
   emitter.emit('player-command', command)
 }
 

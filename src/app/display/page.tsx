@@ -50,6 +50,7 @@ export default function DisplayPage() {
       if (!playerRef.current) return
       if (cmd === 'play') playerRef.current.playVideo()
       if (cmd === 'pause') playerRef.current.pauseVideo()
+      if (cmd === 'restart') { playerRef.current.seekTo(0, true); playerRef.current.playVideo() }
     }, [])
   )
 
