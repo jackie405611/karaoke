@@ -290,11 +290,18 @@ export default function RemotePage() {
 
                         {/* Song info */}
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium truncate leading-snug ${
-                            isNowPlaying ? 'text-white' : 'text-gray-200'
-                          }`}>
-                            {item.title}
-                          </p>
+                          {isNowPlaying ? (
+                            <div className="marquee-container leading-snug">
+                              <div className="marquee-track">
+                                <span className="text-sm font-medium text-white">{item.title}</span>
+                                <span className="text-sm font-medium text-white">{item.title}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm font-medium text-gray-200 truncate leading-snug">
+                              {item.title}
+                            </p>
+                          )}
                           <p className="text-xs text-gray-600 truncate mt-0.5">
                             🎤 {item.requested_by}
                           </p>
