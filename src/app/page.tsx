@@ -30,7 +30,9 @@ export default function Home() {
   const playerRef = useRef<YT.Player | null>(null)
   const playerContainerRef = useRef<HTMLDivElement>(null)
   const isPlayingRef = useRef(isPlaying)
+  const queueRef = useRef(queue)
   useEffect(() => { isPlayingRef.current = isPlaying }, [isPlaying])
+  useEffect(() => { queueRef.current = queue }, [queue])
 
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
   const hasPrev = queue.some((q) => q.status === 'done')
@@ -71,7 +73,7 @@ export default function Home() {
   }, [])
 
   const handleNext = useCallback(async () => {
-    const playing = queue.find((q) => q.status === 'playing')
+    const playing = queueRef.current.find((q) => q.status === 'playing')
     if (!playing) return
     const res = await fetch(`/api/queue/${playing.id}`, {
       method: 'PATCH',
@@ -83,7 +85,7 @@ export default function Home() {
       if (data.done) setIsPlaying(false)
     }
     await fetchQueue()
-  }, [queue, fetchQueue])
+  }, [fetchQueue])
 
   // Keyboard shortcuts
   useEffect(() => {

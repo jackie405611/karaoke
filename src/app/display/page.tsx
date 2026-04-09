@@ -13,6 +13,8 @@ export default function DisplayPage() {
   const [serverIp, setServerIp] = useState('')
   const playerRef = useRef<YT.Player | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const queueRef = useRef(queue)
+  useEffect(() => { queueRef.current = queue }, [queue])
 
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
   const nextSong = queue.find((q) => q.status === 'queued') ?? null
@@ -30,7 +32,7 @@ export default function DisplayPage() {
   }, [fetchQueue])
 
   const handleNext = useCallback(async () => {
-    const playing = queue.find((q) => q.status === 'playing')
+    const playing = queueRef.current.find((q) => q.status === 'playing')
     if (!playing) return
     const res = await fetch(`/api/queue/${playing.id}`, {
       method: 'PATCH',
@@ -41,7 +43,7 @@ export default function DisplayPage() {
       const data = await res.json()
       if (data.done) setIsPlaying(false)
     }
-  }, [queue])
+  }, [])
 
   usePlayerSSE(
     fetchQueue,

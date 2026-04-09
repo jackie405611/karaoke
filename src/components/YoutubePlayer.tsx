@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useLayoutEffect } from 'react'
 
 declare global {
   interface Window {
@@ -20,6 +20,14 @@ export default function YoutubePlayer({ videoId, onReady, onStateChange }: Props
   const playerRef = useRef<YT.Player | null>(null)
   const isAPIReady = useRef(false)
 
+  // Always-fresh refs so the YT player (created once) calls the latest callbacks
+  const onReadyRef = useRef(onReady)
+  const onStateChangeRef = useRef(onStateChange)
+  useLayoutEffect(() => {
+    onReadyRef.current = onReady
+    onStateChangeRef.current = onStateChange
+  })
+
   const initPlayer = useCallback(() => {
     if (!containerRef.current || playerRef.current) return
 
@@ -35,11 +43,13 @@ export default function YoutubePlayer({ videoId, onReady, onStateChange }: Props
         playsinline: 1,
       },
       events: {
-        onReady: (e) => onReady(e.target),
-        onStateChange: (e) => onStateChange(e.data),
+        onReady: (e) => onReadyRef.current(e.target),
+        onStateChange: (e) => onStateChangeRef.current(e.data),
       },
     })
-  }, [videoId, onReady, onStateChange])
+  // videoId is needed only for the initial load — callbacks use refs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId])
 
   useEffect(() => {
     if (window.YT && window.YT.Player) {
