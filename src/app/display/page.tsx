@@ -110,11 +110,17 @@ export default function DisplayPage() {
         </div>
       )}
 
-      {/* Top bar — remote URL + fullscreen button (fades out) */}
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-4 bg-gradient-to-b from-black/70 to-transparent opacity-100 hover:opacity-100 transition-opacity group">
-        <div className="flex items-center gap-2">
-          <span className="text-white text-lg font-bold">🎤</span>
-          <span className="text-white font-semibold text-sm">YouTube Karaoke</span>
+      {/* Top bar — song title + remote URL + fullscreen button */}
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-4 bg-gradient-to-b from-black/80 to-transparent">
+        <div className="flex items-center gap-2 min-w-0 flex-1 mr-4">
+          <span className="text-white text-lg font-bold flex-shrink-0">🎤</span>
+          {currentSong ? (
+            <span className="text-white font-bold text-lg truncate leading-tight">
+              {currentSong.title}
+            </span>
+          ) : (
+            <span className="text-white font-semibold text-sm">YouTube Karaoke</span>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
