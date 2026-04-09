@@ -53,12 +53,16 @@ export function usePlayerSSE(
   const lastSeqRef = useRef<number>(-1)
 
   useEffect(() => {
-    // SSE — used only for queue-update notifications
+    // SSE — queue-update + player-command (immediate, works when server is single-process)
     const es = new EventSource('/api/events')
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'queue-update') onQueueUpdateRef.current()
+        if (data.type === 'player-command') {
+          lastSeqRef.current = -2   // signal: SSE just fired, skip next poll to avoid duplicate
+          onPlayerCommandRef.current(data.command)
+        }
       } catch {}
     }
 
@@ -68,8 +72,9 @@ export function usePlayerSSE(
         const res = await fetch('/api/player/state')
         if (!res.ok) return
         const { command, seq } = await res.json() as { command: 'play' | 'pause' | 'restart'; seq: number }
-        if (lastSeqRef.current === -1) {
-          // First poll — just record current seq, don't replay old command
+        if (lastSeqRef.current === -1 || lastSeqRef.current === -2) {
+          // -1: first poll, initialise seq baseline
+          // -2: SSE already handled this command, sync seq to avoid re-firing
           lastSeqRef.current = seq
           return
         }
