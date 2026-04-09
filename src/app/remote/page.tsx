@@ -35,6 +35,9 @@ export default function RemotePage() {
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
   const [isPlaying, setIsPlaying] = useState(true)
   const [clearingQueue, setClearingQueue] = useState(false)
+  const [showUrlChoice, setShowUrlChoice] = useState(false)
+
+  const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/.test(url)
 
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
   const hasNext     = queue.some((q) => q.status === 'queued')
@@ -72,9 +75,19 @@ export default function RemotePage() {
     }
   }
 
-  async function handleAddUrl(e: React.FormEvent) {
+  function handleAddUrl(e: { preventDefault(): void }) {
     e.preventDefault()
-    if (!url.trim()) return
+    if (!url.trim() || addLoading) return
+    if (urlIsPlaylist) {
+      setShowUrlChoice(true)
+      setAddError('')
+      return
+    }
+    doAddUrl(url.trim())
+  }
+
+  async function doAddUrl(submitUrl: string) {
+    setShowUrlChoice(false)
     setAddLoading(true)
     setAddError('')
     setAddSuccess('')
@@ -82,11 +95,15 @@ export default function RemotePage() {
       const res = await fetch('/api/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ youtube_url: url.trim(), requested_by: requester.trim() || 'Guest' }),
+        body: JSON.stringify({ youtube_url: submitUrl, requested_by: requester.trim() || 'Guest' }),
       })
       const data = await res.json()
       if (!res.ok) {
-        setAddError(data.error ?? data.message ?? 'เกิดข้อผิดพลาด')
+        setAddError(
+          data.error === 'NO_API_KEY'
+            ? 'ต้องตั้งค่า YOUTUBE_API_KEY เพื่อเพิ่มทั้ง Playlist'
+            : (data.error ?? data.message ?? 'เกิดข้อผิดพลาด')
+        )
       } else {
         setUrl('')
         setAddSuccess(data.batch ? `✅ เพิ่ม ${data.added} เพลงแล้ว` : '✅ เพิ่มเพลงแล้ว')
@@ -98,6 +115,16 @@ export default function RemotePage() {
     } finally {
       setAddLoading(false)
     }
+  }
+
+  function handleChooseSingle() {
+    const match = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/)
+    if (!match) {
+      setShowUrlChoice(false)
+      setAddError('URL นี้ไม่มี Video ID (v=) — ลองเปิดเพลงนั้นใน YouTube แล้วคัดลอก URL ใหม่')
+      return
+    }
+    doAddUrl(match[1])
   }
 
   const handleAddFromSearch = useCallback(async (videoId: string) => {
@@ -200,15 +227,22 @@ export default function RemotePage() {
 
               {/* URL add form */}
               <form onSubmit={handleAddUrl} className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  inputMode="url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="วาง YouTube URL..."
-                  className="flex-1 min-w-0 bg-gray-800/70 border border-gray-700/70 rounded-2xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20 transition"
-                  disabled={addLoading}
-                />
+                <div className="relative flex-1 min-w-0">
+                  <input
+                    type="text"
+                    inputMode="url"
+                    value={url}
+                    onChange={(e) => { setUrl(e.target.value); setShowUrlChoice(false) }}
+                    placeholder="วาง YouTube URL..."
+                    className="w-full bg-gray-800/70 border border-gray-700/70 rounded-2xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20 transition pr-16"
+                    disabled={addLoading}
+                  />
+                  {urlIsPlaylist && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] bg-blue-700 text-white rounded px-1.5 py-0.5 pointer-events-none">
+                      📋
+                    </span>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={addLoading || !url.trim()}
@@ -218,6 +252,33 @@ export default function RemotePage() {
                   {addLoading ? <span className="text-sm animate-spin">⏳</span> : '＋'}
                 </button>
               </form>
+
+              {/* Playlist choice sheet */}
+              {showUrlChoice && urlIsPlaylist && (
+                <div className="bg-gray-800/90 border border-blue-700/50 rounded-2xl p-3 flex flex-col gap-2.5">
+                  <p className="text-sm text-gray-200 font-medium px-0.5">📋 พบ Playlist — เพิ่มแบบไหน?</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleChooseSingle}
+                      className="flex-1 bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white text-sm font-medium py-3 rounded-xl transition-colors active:scale-[0.97]"
+                    >
+                      🎵 เพลงนี้เพลงเดียว
+                    </button>
+                    <button
+                      onClick={() => doAddUrl(url.trim())}
+                      className="flex-1 bg-blue-700 hover:bg-blue-600 active:bg-blue-500 text-white text-sm font-medium py-3 rounded-xl transition-colors active:scale-[0.97]"
+                    >
+                      📋 ทั้ง Playlist
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowUrlChoice(false)}
+                    className="text-xs text-gray-600 hover:text-gray-400 transition-colors self-center py-0.5"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              )}
 
               {addError   && <p className="text-red-400 text-xs px-1">{addError}</p>}
               {addSuccess && <p className="text-green-400 text-xs px-1">{addSuccess}</p>}
