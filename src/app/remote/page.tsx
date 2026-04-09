@@ -18,21 +18,28 @@ async function playerCmd(action: string) {
   })
 }
 
+const NAV_TABS: { id: Tab; icon: string; label: string }[] = [
+  { id: 'queue',    icon: '♫',  label: 'คิว' },
+  { id: 'search',   icon: '◎',  label: 'ค้นหา' },
+  { id: 'playlist', icon: '≡',  label: 'Playlist' },
+]
+
 export default function RemotePage() {
   const { queue, loading, fetchQueue } = useQueue()
-  const [tab, setTab] = useState<Tab>('queue')
+  const [tab, setTab]             = useState<Tab>('queue')
   const [requester, setRequester] = useState('')
-  const [url, setUrl] = useState('')
+  const [url, setUrl]             = useState('')
   const [addLoading, setAddLoading] = useState(false)
-  const [addError, setAddError] = useState('')
+  const [addError, setAddError]   = useState('')
   const [addSuccess, setAddSuccess] = useState('')
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
-  const [isPlaying, setIsPlaying] = useState(true) // optimistic UI
+  const [isPlaying, setIsPlaying] = useState(true)
   const [clearingQueue, setClearingQueue] = useState(false)
 
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
-  const hasNext = queue.some((q) => q.status === 'queued')
-  const hasPrev = queue.some((q) => q.status === 'done')
+  const hasNext     = queue.some((q) => q.status === 'queued')
+  const hasPrev     = queue.some((q) => q.status === 'done')
+  const queueCount  = queue.filter((q) => q.status !== 'done').length
 
   async function handlePlayPause() {
     const next = !isPlaying
@@ -40,13 +47,8 @@ export default function RemotePage() {
     await playerCmd(next ? 'play' : 'pause')
   }
 
-  async function handleNext() {
-    await playerCmd('next')
-  }
-
-  async function handlePrev() {
-    await playerCmd('prev')
-  }
+  async function handleNext() { await playerCmd('next') }
+  async function handlePrev() { await playerCmd('prev') }
 
   async function handlePlayNow(id: number) {
     await fetch(`/api/queue/${id}`, {
@@ -109,195 +111,277 @@ export default function RemotePage() {
   }, [requester, fetchQueue])
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col max-w-lg mx-auto">
-      {/* Now Playing Bar */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 py-3">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-xl">🎤</span>
+    <div
+      className="flex flex-col bg-gray-950 text-white overflow-hidden"
+      style={{ height: '100dvh' }}
+    >
+      {/* ── Now Playing + Controls ─────────────────── */}
+      <div className="flex-shrink-0 bg-gray-900/95 border-b border-gray-800">
+        {/* Now Playing row */}
+        <div
+          className="flex items-center gap-3 px-4 pb-2"
+          style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)' }}
+        >
+          {/* Thumbnail */}
+          <div className="relative w-12 h-9 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800 ring-1 ring-white/5">
+            {currentSong ? (
+              <Image
+                src={currentSong.thumbnail}
+                alt={currentSong.title}
+                fill
+                sizes="48px"
+                className="object-cover"
+                unoptimized
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-700 text-xl">♪</div>
+            )}
+          </div>
+
+          {/* Song info */}
           <div className="flex-1 min-w-0">
             {currentSong ? (
               <>
-                <p className="text-white font-semibold text-sm truncate">{currentSong.title}</p>
-                <p className="text-gray-500 text-xs">🎤 {currentSong.requested_by}</p>
+                <p className="text-white text-sm font-semibold truncate leading-snug">
+                  {currentSong.title}
+                </p>
+                <p className="text-gray-500 text-xs truncate">🎤 {currentSong.requested_by}</p>
               </>
             ) : (
-              <p className="text-gray-500 text-sm">ยังไม่มีเพลงที่กำลังเล่น</p>
+              <p className="text-gray-600 text-sm">ไม่มีเพลงกำลังเล่น</p>
             )}
           </div>
-          {/* Requester input */}
+
+          {/* Requester name */}
           <input
             type="text"
             value={requester}
             onChange={(e) => setRequester(e.target.value)}
             placeholder="ชื่อคุณ"
-            className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-red-500"
+            className="w-20 bg-gray-800 border border-gray-700/80 rounded-xl px-2.5 py-1.5 text-white text-xs placeholder-gray-600 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20 transition"
           />
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center justify-center gap-4">
+        {/* Player Controls */}
+        <div className="flex items-center justify-center gap-5 px-4 pb-4">
           <button
             onClick={handlePrev}
             disabled={!hasPrev}
-            className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 disabled:opacity-30 text-white text-xl transition-colors active:scale-95"
+            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
+            aria-label="เพลงก่อนหน้า"
           >
             ⏮
           </button>
           <button
             onClick={handlePlayPause}
-            className="w-16 h-16 flex items-center justify-center rounded-full bg-red-600 hover:bg-red-500 text-white text-2xl shadow-lg shadow-red-900/50 transition-colors active:scale-95"
+            className="w-[68px] h-[68px] flex items-center justify-center rounded-2xl bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-[26px] shadow-lg shadow-red-950/70 transition-all active:scale-[0.93]"
+            aria-label={isPlaying ? 'หยุด' : 'เล่น'}
           >
             {isPlaying ? '⏸' : '▶'}
           </button>
           <button
             onClick={handleNext}
             disabled={!hasNext}
-            className="w-12 h-12 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 disabled:opacity-30 text-white text-xl transition-colors active:scale-95"
+            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
+            aria-label="เพลงถัดไป"
           >
             ⏭
           </button>
         </div>
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 overflow-hidden flex flex-col">
+      {/* ── Tab Content (fills remaining space, scrolls internally) ── */}
+      <div className="flex-1 min-h-0 overflow-hidden">
 
         {/* Queue tab */}
         {tab === 'queue' && (
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-            {/* Add song quick input */}
-            <form onSubmit={handleAddUrl} className="flex gap-2">
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="วาง YouTube URL หรือ Playlist..."
-                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-red-500"
-                disabled={addLoading}
-              />
-              <button
-                type="submit"
-                disabled={addLoading || !url.trim()}
-                className="bg-red-600 hover:bg-red-500 disabled:bg-gray-700 text-white text-sm px-3 rounded-lg transition-colors active:scale-95"
-              >
-                {addLoading ? '⏳' : '＋'}
-              </button>
-            </form>
-            {addError && <p className="text-red-400 text-xs">{addError}</p>}
-            {addSuccess && <p className="text-green-400 text-xs">{addSuccess}</p>}
+          <div className="h-full overflow-y-auto overscroll-contain">
+            <div className="p-3 flex flex-col gap-2">
 
-            {/* Clear queue */}
-            {queue.some((q) => q.status === 'queued' || q.status === 'done') && (
-              <div className="flex justify-end">
+              {/* URL add form */}
+              <form onSubmit={handleAddUrl} className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  inputMode="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="วาง YouTube URL..."
+                  className="flex-1 min-w-0 bg-gray-800/70 border border-gray-700/70 rounded-2xl px-3.5 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20 transition"
+                  disabled={addLoading}
+                />
                 <button
-                  onClick={handleClearQueue}
-                  disabled={clearingQueue}
-                  className="text-xs text-gray-500 hover:text-red-400 border border-gray-700 hover:border-red-700 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 active:scale-95"
+                  type="submit"
+                  disabled={addLoading || !url.trim()}
+                  className="flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-2xl bg-red-600 hover:bg-red-500 active:bg-red-700 disabled:bg-gray-800 disabled:text-gray-600 text-white text-xl font-light transition-all active:scale-[0.93]"
+                  aria-label="เพิ่มเพลง"
                 >
-                  {clearingQueue ? '⏳ กำลังล้าง...' : '🗑 ล้างคิว'}
+                  {addLoading ? <span className="text-sm animate-spin">⏳</span> : '＋'}
                 </button>
-              </div>
-            )}
+              </form>
 
-            {/* Queue list */}
-            {loading ? (
-              <div className="flex items-center justify-center h-32 text-gray-500 gap-2 text-sm">
-                <span className="animate-spin">⏳</span> กำลังโหลด...
-              </div>
-            ) : queue.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 text-gray-500 gap-2">
-                <span className="text-3xl">🎵</span>
-                <p className="text-sm">คิวว่างอยู่</p>
-              </div>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {queue.map((item, index) => {
-                  const isNowPlaying = item.status === 'playing'
-                  return (
-                    <li
-                      key={item.id}
-                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                        isNowPlaying
-                          ? 'bg-red-900/40 border-red-500'
-                          : 'bg-gray-800/60 border-gray-700'
-                      }`}
+              {addError   && <p className="text-red-400 text-xs px-1">{addError}</p>}
+              {addSuccess && <p className="text-green-400 text-xs px-1">{addSuccess}</p>}
+
+              {/* Queue section header */}
+              {(queue.length > 0 || loading) && (
+                <div className="flex items-center justify-between px-1 mt-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-600">
+                    คิว{queueCount > 0 ? ` · ${queueCount} เพลง` : ''}
+                  </span>
+                  {queue.some((q) => q.status === 'queued' || q.status === 'done') && (
+                    <button
+                      onClick={handleClearQueue}
+                      disabled={clearingQueue}
+                      className="text-xs text-gray-600 hover:text-red-400 active:text-red-300 transition-colors disabled:opacity-40 rounded-lg py-1 px-2 -mr-1"
                     >
-                      <div className="w-6 text-center flex-shrink-0">
-                        {isNowPlaying
-                          ? <span className="text-red-400 animate-pulse">▶</span>
-                          : <span className="text-gray-500 text-sm">{index + 1}</span>
-                        }
-                      </div>
-                      <div className="relative w-12 h-9 flex-shrink-0 rounded overflow-hidden bg-gray-700">
-                        <Image src={item.thumbnail} alt={item.title} fill sizes="48px" className="object-cover" unoptimized />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-200 truncate font-medium">{item.title}</p>
-                        <p className="text-xs text-gray-500">🎤 {item.requested_by}</p>
-                      </div>
-                      <div className="flex gap-1 flex-shrink-0">
-                        {!isNowPlaying && (
+                      {clearingQueue ? 'ล้างอยู่...' : '🗑 ล้างคิว'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Queue items */}
+              {loading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-700 gap-3">
+                  <span className="text-3xl animate-spin">⏳</span>
+                  <span className="text-sm">กำลังโหลด...</span>
+                </div>
+              ) : queue.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-700 gap-3">
+                  <span className="text-5xl opacity-30">🎵</span>
+                  <p className="text-sm text-gray-600">คิวว่างอยู่ — เพิ่มเพลงเลย!</p>
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-1.5 pb-2">
+                  {queue.map((item, index) => {
+                    const isNowPlaying = item.status === 'playing'
+                    const isDone       = item.status === 'done'
+                    return (
+                      <li
+                        key={item.id}
+                        className={`flex items-center gap-2.5 p-2.5 rounded-2xl border transition-all ${
+                          isNowPlaying
+                            ? 'bg-red-950/40 border-red-800/50'
+                            : isDone
+                            ? 'bg-gray-900/20 border-gray-800/30 opacity-45'
+                            : 'bg-gray-800/40 border-gray-700/30'
+                        }`}
+                      >
+                        {/* Index / playing indicator */}
+                        <div className="w-5 text-center flex-shrink-0 flex items-center justify-center">
+                          {isNowPlaying ? (
+                            <span className="block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                          ) : (
+                            <span className="text-[11px] text-gray-600">{index + 1}</span>
+                          )}
+                        </div>
+
+                        {/* Thumbnail */}
+                        <div className="relative w-12 h-9 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
+                          <Image
+                            src={item.thumbnail}
+                            alt={item.title}
+                            fill
+                            sizes="48px"
+                            className="object-cover"
+                            unoptimized
+                          />
+                        </div>
+
+                        {/* Song info */}
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium truncate leading-snug ${
+                            isNowPlaying ? 'text-white' : 'text-gray-200'
+                          }`}>
+                            {item.title}
+                          </p>
+                          <p className="text-xs text-gray-600 truncate mt-0.5">
+                            🎤 {item.requested_by}
+                          </p>
+                        </div>
+
+                        {/* Action buttons — 36px touch targets */}
+                        <div className="flex gap-1 flex-shrink-0">
+                          {!isNowPlaying && !isDone && (
+                            <button
+                              onClick={() => handlePlayNow(item.id)}
+                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-green-900/30 hover:bg-green-800/50 active:bg-green-800 text-green-500 text-sm transition-all active:scale-[0.93]"
+                              title="เล่นเดี๋ยวนี้"
+                            >▶</button>
+                          )}
                           <button
-                            onClick={() => handlePlayNow(item.id)}
-                            className="p-2 rounded-lg bg-green-700/50 hover:bg-green-600 text-green-300 text-xs active:scale-95 transition-colors"
-                          >▶▶</button>
-                        )}
-                        <button
-                          onClick={() => setSaveTarget(item)}
-                          className="p-2 rounded-lg bg-gray-700 hover:bg-blue-700 text-gray-400 text-xs active:scale-95 transition-colors"
-                        >💾</button>
-                        <button
-                          onClick={() => handleRemove(item.id)}
-                          className="p-2 rounded-lg bg-gray-700 hover:bg-red-700 text-gray-400 text-xs active:scale-95 transition-colors"
-                        >✕</button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
+                            onClick={() => setSaveTarget(item)}
+                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-blue-900/40 active:bg-blue-900 text-gray-500 hover:text-blue-400 text-sm transition-all active:scale-[0.93]"
+                            title="บันทึกในเพลย์ลิสต์"
+                          >💾</button>
+                          {!isNowPlaying && (
+                            <button
+                              onClick={() => handleRemove(item.id)}
+                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-red-900/40 active:bg-red-900 text-gray-500 hover:text-red-400 text-sm transition-all active:scale-[0.93]"
+                              title="ลบออกจากคิว"
+                            >✕</button>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         )}
 
         {/* Search tab */}
         {tab === 'search' && (
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="h-full overflow-y-auto overscroll-contain p-3">
             <SearchPanel onAddSong={handleAddFromSearch} />
           </div>
         )}
 
         {/* Playlist tab */}
         {tab === 'playlist' && (
-          <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="h-full overflow-hidden flex flex-col">
             <PlaylistPanel onLoadToQueue={fetchQueue} />
           </div>
         )}
       </div>
 
-      {/* Bottom Navigation */}
-      <nav className="border-t border-gray-800 bg-gray-900 flex safe-area-pb">
-        {([
-          { id: 'queue', label: '🎵 คิว', badge: queue.filter(q => q.status !== 'done').length },
-          { id: 'search', label: '🔍 ค้นหา', badge: 0 },
-          { id: 'playlist', label: '📋 Playlist', badge: 0 },
-        ] as { id: Tab; label: string; badge: number }[]).map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 flex flex-col items-center justify-center py-3 gap-0.5 text-xs font-medium transition-colors ${
-              tab === t.id ? 'text-red-400' : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
-            <span className="text-base relative">
-              {t.label}
-              {t.badge > 0 && (
-                <span className="ml-1 bg-red-600 text-white text-xs rounded-full px-1.5 py-0.5 align-top">
-                  {t.badge}
-                </span>
+      {/* ── Bottom Navigation ─────────────────────── */}
+      <nav
+        className="flex-shrink-0 flex bg-gray-900/95 border-t border-gray-800"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        {NAV_TABS.map((t) => {
+          const badge  = t.id === 'queue' ? queueCount : 0
+          const active = tab === t.id
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 relative flex flex-col items-center justify-center gap-1 py-2.5 min-h-[56px] transition-colors ${
+                active ? 'text-white' : 'text-gray-600 active:text-gray-400'
+              }`}
+            >
+              {/* Active bar */}
+              {active && (
+                <span className="absolute top-0 left-[30%] right-[30%] h-[2px] bg-red-500 rounded-full" />
               )}
-            </span>
-          </button>
-        ))}
+
+              <span className={`text-[18px] leading-none transition-transform ${active ? 'scale-110' : 'scale-100'}`}>
+                {t.icon}
+              </span>
+
+              <span className="text-[10px] font-medium tracking-wide leading-none relative">
+                {t.label}
+                {badge > 0 && (
+                  <span className="absolute -top-1.5 -right-3.5 min-w-[16px] h-4 flex items-center justify-center bg-red-600 text-white text-[9px] font-bold rounded-full px-0.5 leading-none">
+                    {badge > 9 ? '9+' : badge}
+                  </span>
+                )}
+              </span>
+            </button>
+          )
+        })}
       </nav>
 
       {saveTarget && (
