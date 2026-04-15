@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { getRoomByCode, RoomError, roomNotFoundResponse } from '@/lib/rooms'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
     const { id } = await params
     const sql = getDb()
-    const [playlist] = await sql`SELECT * FROM playlists WHERE id = ${Number(id)}`
+    const [playlist] = await sql`SELECT * FROM playlists WHERE id = ${Number(id)} AND room_id = ${room.id}`
     if (!playlist) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const items = await sql`
@@ -18,6 +20,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     `
     return NextResponse.json({ ...playlist, items })
   } catch (err) {
+    if (err instanceof RoomError) return roomNotFoundResponse()
     console.error(err)
     return NextResponse.json({ error: 'Failed to fetch playlist' }, { status: 500 })
   }
@@ -25,25 +28,29 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
     const { id } = await params
     const { name, description } = await req.json()
     const sql = getDb()
-    if (name !== undefined) await sql`UPDATE playlists SET name = ${name.trim()} WHERE id = ${Number(id)}`
-    if (description !== undefined) await sql`UPDATE playlists SET description = ${description.trim()} WHERE id = ${Number(id)}`
+    if (name !== undefined) await sql`UPDATE playlists SET name = ${name.trim()} WHERE id = ${Number(id)} AND room_id = ${room.id}`
+    if (description !== undefined) await sql`UPDATE playlists SET description = ${description.trim()} WHERE id = ${Number(id)} AND room_id = ${room.id}`
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof RoomError) return roomNotFoundResponse()
     console.error(err)
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
     const { id } = await params
     const sql = getDb()
-    await sql`DELETE FROM playlists WHERE id = ${Number(id)}`
+    await sql`DELETE FROM playlists WHERE id = ${Number(id)} AND room_id = ${room.id}`
     return NextResponse.json({ success: true })
   } catch (err) {
+    if (err instanceof RoomError) return roomNotFoundResponse()
     console.error(err)
     return NextResponse.json({ error: 'Failed to delete' }, { status: 500 })
   }

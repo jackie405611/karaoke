@@ -9,10 +9,11 @@ interface PlaylistDetail extends Playlist {
 }
 
 interface Props {
+  roomCode: string
   onLoadToQueue: () => void
 }
 
-export default function PlaylistPanel({ onLoadToQueue }: Props) {
+export default function PlaylistPanel({ roomCode, onLoadToQueue }: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([])
   const [selected, setSelected] = useState<PlaylistDetail | null>(null)
   const [creating, setCreating] = useState(false)
@@ -23,16 +24,16 @@ export default function PlaylistPanel({ onLoadToQueue }: Props) {
   const [msg, setMsg] = useState('')
 
   const fetchPlaylists = useCallback(async () => {
-    const res = await fetch('/api/playlists')
+    const res = await fetch(`/api/playlists?room=${roomCode}`)
     const data = await res.json()
     setPlaylists(data)
     setLoading(false)
-  }, [])
+  }, [roomCode])
 
   useEffect(() => { fetchPlaylists() }, [fetchPlaylists])
 
   async function openPlaylist(pl: Playlist) {
-    const res = await fetch(`/api/playlists/${pl.id}`)
+    const res = await fetch(`/api/playlists/${pl.id}?room=${roomCode}`)
     const data = await res.json()
     setSelected(data)
   }
@@ -40,7 +41,7 @@ export default function PlaylistPanel({ onLoadToQueue }: Props) {
   async function createPlaylist(e: React.FormEvent) {
     e.preventDefault()
     if (!newName.trim()) return
-    await fetch('/api/playlists', {
+    await fetch(`/api/playlists?room=${roomCode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() }),
@@ -53,14 +54,14 @@ export default function PlaylistPanel({ onLoadToQueue }: Props) {
 
   async function deletePlaylist(id: number) {
     if (!confirm('ลบ playlist นี้?')) return
-    await fetch(`/api/playlists/${id}`, { method: 'DELETE' })
+    await fetch(`/api/playlists/${id}?room=${roomCode}`, { method: 'DELETE' })
     if (selected?.id === id) setSelected(null)
     fetchPlaylists()
   }
 
   async function removeItem(playlistId: number, itemId: number) {
-    await fetch(`/api/playlists/${playlistId}/items/${itemId}`, { method: 'DELETE' })
-    const res = await fetch(`/api/playlists/${playlistId}`)
+    await fetch(`/api/playlists/${playlistId}/items/${itemId}?room=${roomCode}`, { method: 'DELETE' })
+    const res = await fetch(`/api/playlists/${playlistId}?room=${roomCode}`)
     setSelected(await res.json())
     fetchPlaylists()
   }
@@ -69,7 +70,7 @@ export default function PlaylistPanel({ onLoadToQueue }: Props) {
     setLoadingId(playlistId)
     setMsg('')
     try {
-      const res = await fetch(`/api/playlists/${playlistId}/load`, { method: 'POST' })
+      const res = await fetch(`/api/playlists/${playlistId}/load?room=${roomCode}`, { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
         setMsg(`✅ โหลด ${data.added} เพลงลงคิวแล้ว`)
@@ -158,7 +159,6 @@ export default function PlaylistPanel({ onLoadToQueue }: Props) {
         </button>
       </div>
 
-      {/* Create form */}
       {creating && (
         <form onSubmit={createPlaylist} className="flex flex-col gap-2 p-3 border-b border-gray-800 bg-gray-900/60">
           <input
@@ -206,7 +206,6 @@ export default function PlaylistPanel({ onLoadToQueue }: Props) {
               className="flex items-center gap-3 p-3 rounded-xl bg-gray-800/60 border border-gray-700 hover:border-gray-500 group cursor-pointer"
               onClick={() => openPlaylist(pl)}
             >
-              {/* Icon */}
               <div className="w-10 h-10 rounded-lg bg-gray-700 flex items-center justify-center text-xl flex-shrink-0">
                 📋
               </div>

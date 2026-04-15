@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { notifyQueueUpdate } from '@/lib/events'
+import { getRoomByCode, RoomError, roomNotFoundResponse } from '@/lib/rooms'
 import {
   extractVideoId,
   extractPlaylistId,
@@ -10,19 +11,21 @@ import {
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
     const sql = getDb()
     const rows = await sql`
       SELECT q.id, q.video_id, q.queue_order, q.status, q.requested_by, q.created_at,
              v.youtube_video_id, v.title, v.thumbnail, v.duration
       FROM queue q
       JOIN videos v ON v.id = q.video_id
-      WHERE q.status != 'done'
+      WHERE q.room_id = ${room.id} AND q.status != 'done'
       ORDER BY q.queue_order ASC
     `
     return NextResponse.json(rows)
   } catch (err) {
+    if (err instanceof RoomError) return roomNotFoundResponse()
     console.error(err)
     return NextResponse.json({ error: 'Failed to fetch queue' }, { status: 500 })
   }
@@ -30,6 +33,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
     const { youtube_url, requested_by = 'Guest' } = await req.json()
     if (!youtube_url) return NextResponse.json({ error: 'youtube_url is required' }, { status: 400 })
 
@@ -45,9 +49,9 @@ export async function POST(req: NextRequest) {
       if (items.length === 0) return NextResponse.json({ error: 'ไม่พบเพลงใน playlist' }, { status: 404 })
 
       const [{ m: maxOrder }] = await sql`
-        SELECT COALESCE(MAX(queue_order), 0)::int AS m FROM queue WHERE status != 'done'
+        SELECT COALESCE(MAX(queue_order), 0)::int AS m FROM queue WHERE room_id = ${room.id} AND status != 'done'
       ` as { m: number }[]
-      const hasPlaying = await sql`SELECT id FROM queue WHERE status = 'playing' LIMIT 1`
+      const hasPlaying = await sql`SELECT id FROM queue WHERE room_id = ${room.id} AND status = 'playing' LIMIT 1`
 
       let order = maxOrder
       let firstAdded = false
@@ -60,11 +64,11 @@ export async function POST(req: NextRequest) {
         const [video] = await sql`SELECT id FROM videos WHERE youtube_video_id = ${item.videoId}`
         order += 1
         const status = hasPlaying.length === 0 && !firstAdded ? 'playing' : 'queued'
-        await sql`INSERT INTO queue (video_id, queue_order, status, requested_by) VALUES (${video.id}, ${order}, ${status}, ${requested_by})`
+        await sql`INSERT INTO queue (room_id, video_id, queue_order, status, requested_by) VALUES (${room.id}, ${video.id}, ${order}, ${status}, ${requested_by})`
         firstAdded = true
       }
 
-      notifyQueueUpdate()
+      notifyQueueUpdate(room.code)
       return NextResponse.json({ batch: true, added: items.length }, { status: 201 })
     }
 
@@ -87,16 +91,16 @@ export async function POST(req: NextRequest) {
     }
 
     const [{ maxorder }] = await sql`
-      SELECT COALESCE(MAX(queue_order), 0)::int AS maxorder FROM queue WHERE status != 'done'
+      SELECT COALESCE(MAX(queue_order), 0)::int AS maxorder FROM queue WHERE room_id = ${room.id} AND status != 'done'
     ` as { maxorder: number }[]
 
     const [newQueue] = await sql`
-      INSERT INTO queue (video_id, queue_order, status, requested_by)
-      VALUES (${videoDbId}, ${maxorder + 1}, 'queued', ${requested_by})
+      INSERT INTO queue (room_id, video_id, queue_order, status, requested_by)
+      VALUES (${room.id}, ${videoDbId}, ${maxorder + 1}, 'queued', ${requested_by})
       RETURNING id
     `
 
-    const hasPlaying = await sql`SELECT id FROM queue WHERE status = 'playing' LIMIT 1`
+    const hasPlaying = await sql`SELECT id FROM queue WHERE room_id = ${room.id} AND status = 'playing' LIMIT 1`
     if (hasPlaying.length === 0) {
       await sql`UPDATE queue SET status = 'playing' WHERE id = ${newQueue.id}`
     }
@@ -107,9 +111,10 @@ export async function POST(req: NextRequest) {
       FROM queue q JOIN videos v ON v.id = q.video_id
       WHERE q.id = ${newQueue.id}
     `
-    notifyQueueUpdate()
+    notifyQueueUpdate(room.code)
     return NextResponse.json(item, { status: 201 })
   } catch (err) {
+    if (err instanceof RoomError) return roomNotFoundResponse()
     console.error(err)
     const message = err instanceof Error ? err.message : 'Failed to add song'
     return NextResponse.json({ error: message }, { status: 500 })

@@ -1,10 +1,16 @@
+import { NextRequest } from 'next/server'
 import { emitter } from '@/lib/events'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const roomCode = (req.nextUrl.searchParams.get('room') ?? '').toUpperCase()
+
   const encoder = new TextEncoder()
   let cleanup: (() => void) | undefined
+
+  const queueEvent  = `room:${roomCode}:queue-update`
+  const playerEvent = `room:${roomCode}:player-command`
 
   const stream = new ReadableStream({
     start(controller) {
@@ -16,14 +22,13 @@ export async function GET() {
         }
       }
 
-      // Initial heartbeat so client knows connection is live
       send({ type: 'connected' })
 
       const onQueueUpdate = () => send({ type: 'queue-update' })
       const onPlayerCommand = (command: string) => send({ type: 'player-command', command })
 
-      emitter.on('queue-update', onQueueUpdate)
-      emitter.on('player-command', onPlayerCommand)
+      emitter.on(queueEvent, onQueueUpdate)
+      emitter.on(playerEvent, onPlayerCommand)
 
       // Keepalive ping every 25s to prevent proxy/browser timeouts
       const keepalive = setInterval(() => {
@@ -36,8 +41,8 @@ export async function GET() {
 
       cleanup = () => {
         clearInterval(keepalive)
-        emitter.off('queue-update', onQueueUpdate)
-        emitter.off('player-command', onPlayerCommand)
+        emitter.off(queueEvent, onQueueUpdate)
+        emitter.off(playerEvent, onPlayerCommand)
       }
     },
     cancel() {

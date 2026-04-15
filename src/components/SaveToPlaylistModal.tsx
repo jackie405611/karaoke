@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react'
 import type { Playlist, QueueItem } from '@/types'
 
 interface Props {
+  roomCode: string
   song: QueueItem
   onClose: () => void
 }
 
-export default function SaveToPlaylistModal({ song, onClose }: Props) {
+export default function SaveToPlaylistModal({ roomCode, song, onClose }: Props) {
   const [playlists, setPlaylists] = useState<Playlist[]>([])
   const [savingId, setSavingId] = useState<number | null>(null)
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set())
@@ -17,14 +18,14 @@ export default function SaveToPlaylistModal({ song, onClose }: Props) {
   const [newName, setNewName] = useState('')
 
   useEffect(() => {
-    fetch('/api/playlists').then((r) => r.json()).then(setPlaylists)
-  }, [])
+    fetch(`/api/playlists?room=${roomCode}`).then((r) => r.json()).then(setPlaylists)
+  }, [roomCode])
 
   async function save(playlistId: number) {
     setSavingId(playlistId)
     setErrors((prev) => { const e = { ...prev }; delete e[playlistId]; return e })
     try {
-      const res = await fetch(`/api/playlists/${playlistId}/items`, {
+      const res = await fetch(`/api/playlists/${playlistId}/items?room=${roomCode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_id: song.video_id }),
@@ -46,7 +47,7 @@ export default function SaveToPlaylistModal({ song, onClose }: Props) {
   async function createAndSave(e: React.FormEvent) {
     e.preventDefault()
     if (!newName.trim()) return
-    const res = await fetch('/api/playlists', {
+    const res = await fetch(`/api/playlists?room=${roomCode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: newName.trim() }),
@@ -67,13 +68,11 @@ export default function SaveToPlaylistModal({ song, onClose }: Props) {
         className="bg-gray-900 border border-gray-700 rounded-2xl p-5 w-80 shadow-2xl flex flex-col gap-4 max-h-[80vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div>
           <h3 className="text-base font-bold text-white">💾 บันทึกลง Playlist</h3>
           <p className="text-xs text-gray-400 truncate mt-0.5">{song.title}</p>
         </div>
 
-        {/* Create new */}
         {creating ? (
           <form onSubmit={createAndSave} className="flex gap-2">
             <input
@@ -98,7 +97,6 @@ export default function SaveToPlaylistModal({ song, onClose }: Props) {
           </button>
         )}
 
-        {/* Playlist list */}
         <ul className="flex flex-col gap-1.5 overflow-y-auto">
           {playlists.length === 0 && (
             <p className="text-center text-gray-500 text-sm py-4">ยังไม่มี playlist</p>

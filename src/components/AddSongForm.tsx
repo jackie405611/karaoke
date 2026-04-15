@@ -4,6 +4,7 @@ import { useState } from 'react'
 import SearchPanel from './SearchPanel'
 
 interface Props {
+  roomCode: string
   onAdded: () => void
 }
 
@@ -18,19 +19,17 @@ function extractSingleVideoId(url: string): string | null {
   return match ? match[1] : null
 }
 
-export default function AddSongForm({ onAdded }: Props) {
+export default function AddSongForm({ roomCode, onAdded }: Props) {
   const [tab, setTab] = useState<Tab>('url')
   const [url, setUrl] = useState('')
   const [requester, setRequester] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  // null = not showing choice, true = waiting for user to pick
   const [showChoice, setShowChoice] = useState(false)
 
   const isPlaylist = hasPlaylistId(url)
 
-  // Called when form is submitted — if playlist URL, show choice dialog instead
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!url.trim() || loading) return
@@ -48,7 +47,7 @@ export default function AddSongForm({ onAdded }: Props) {
     setError('')
     setSuccess('')
     try {
-      const res = await fetch('/api/queue', {
+      const res = await fetch(`/api/queue?room=${roomCode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ youtube_url: submitUrl, requested_by: requester.trim() || 'Guest' }),
@@ -85,12 +84,8 @@ export default function AddSongForm({ onAdded }: Props) {
     doAdd(singleId)
   }
 
-  function handleChooseAll() {
-    doAdd(url.trim())
-  }
-
   async function handleAddFromSearch(videoId: string) {
-    const res = await fetch('/api/queue', {
+    const res = await fetch(`/api/queue?room=${roomCode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ youtube_url: videoId, requested_by: requester.trim() || 'Guest' }),
@@ -162,7 +157,6 @@ export default function AddSongForm({ onAdded }: Props) {
             </button>
           </form>
 
-          {/* Playlist choice panel */}
           {showChoice && isPlaylist && (
             <div className="flex flex-col gap-2 bg-gray-800 border border-blue-700/60 rounded-xl p-3">
               <p className="text-sm text-gray-300 font-medium">📋 พบ Playlist — ต้องการเพิ่มแบบไหน?</p>
@@ -174,7 +168,7 @@ export default function AddSongForm({ onAdded }: Props) {
                   🎵 เพิ่มแค่เพลงนี้
                 </button>
                 <button
-                  onClick={handleChooseAll}
+                  onClick={() => doAdd(url.trim())}
                   className="flex-1 bg-blue-700 hover:bg-blue-600 active:bg-blue-500 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
                 >
                   📋 เพิ่มทั้ง Playlist

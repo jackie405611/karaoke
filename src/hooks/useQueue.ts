@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { QueueItem } from '@/types'
 
-export function useQueue() {
+export function useQueue(roomCode: string) {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchQueue = useCallback(async () => {
     try {
-      const res = await fetch('/api/queue')
+      const res = await fetch(`/api/queue?room=${roomCode}`)
       const data = await res.json()
       setQueue(data)
     } catch {
@@ -17,13 +17,12 @@ export function useQueue() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [roomCode])
 
   useEffect(() => {
     fetchQueue()
 
-    // SSE for real-time updates
-    const es = new EventSource('/api/events')
+    const es = new EventSource(`/api/events?room=${roomCode}`)
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
@@ -35,12 +34,13 @@ export function useQueue() {
     }
 
     return () => es.close()
-  }, [fetchQueue])
+  }, [roomCode, fetchQueue])
 
   return { queue, loading, fetchQueue }
 }
 
 export function usePlayerSSE(
+  roomCode: string,
   onQueueUpdate: () => void,
   onPlayerCommand: (cmd: 'play' | 'pause' | 'restart') => void
 ) {
@@ -49,32 +49,27 @@ export function usePlayerSSE(
   onQueueUpdateRef.current = onQueueUpdate
   onPlayerCommandRef.current = onPlayerCommand
 
-  // Track the last seq we acted on so we only fire once per command
   const lastSeqRef = useRef<number>(-1)
 
   useEffect(() => {
-    // SSE — queue-update + player-command (immediate, works when server is single-process)
-    const es = new EventSource('/api/events')
+    const es = new EventSource(`/api/events?room=${roomCode}`)
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'queue-update') onQueueUpdateRef.current()
         if (data.type === 'player-command') {
-          lastSeqRef.current = -2   // signal: SSE just fired, skip next poll to avoid duplicate
+          lastSeqRef.current = -2
           onPlayerCommandRef.current(data.command)
         }
       } catch {}
     }
 
-    // Poll DB for player commands every 500 ms — reliable across all process configs
     const pollCommand = async () => {
       try {
-        const res = await fetch('/api/player/state')
+        const res = await fetch(`/api/player/state?room=${roomCode}`)
         if (!res.ok) return
         const { command, seq } = await res.json() as { command: 'play' | 'pause' | 'restart'; seq: number }
         if (lastSeqRef.current === -1 || lastSeqRef.current === -2) {
-          // -1: first poll, initialise seq baseline
-          // -2: SSE already handled this command, sync seq to avoid re-firing
           lastSeqRef.current = seq
           return
         }
@@ -85,7 +80,6 @@ export function usePlayerSSE(
       } catch {}
     }
 
-    // Backup queue poll every 2s — ensures display stays in sync even if SSE EventEmitter drops
     const pollQueue = () => onQueueUpdateRef.current()
 
     pollCommand()
@@ -97,5 +91,5 @@ export function usePlayerSSE(
       clearInterval(commandInterval)
       clearInterval(queueInterval)
     }
-  }, [])
+  }, [roomCode])
 }

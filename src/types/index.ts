@@ -1,3 +1,11 @@
+export interface Room {
+  id: number
+  code: string
+  name: string
+  created_at: string
+  last_active_at: string
+}
+
 export interface Video {
   id: number
   youtube_video_id: string
