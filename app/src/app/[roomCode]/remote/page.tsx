@@ -21,7 +21,13 @@ export default function RoomRemotePage() {
   const params = useParams<{ roomCode: string }>()
   const roomCode = (params.roomCode ?? '').toUpperCase()
 
-  const { queue, loading, fetchQueue } = useQueue(roomCode)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [cmdPending, setCmdPending] = useState(false)
+
+  const { queue, loading, fetchQueue } = useQueue(roomCode, (cmd) => {
+    if (cmd === 'play' || cmd === 'restart') setIsPlaying(true)
+    if (cmd === 'pause') setIsPlaying(false)
+  })
   const [tab, setTab]             = useState<Tab>('queue')
   const [requester, setRequester] = useState('')
   const [url, setUrl]             = useState('')
@@ -29,15 +35,25 @@ export default function RoomRemotePage() {
   const [addError, setAddError]   = useState('')
   const [addSuccess, setAddSuccess] = useState('')
   const [saveTarget, setSaveTarget] = useState<QueueItem | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
   const [clearingQueue, setClearingQueue] = useState(false)
   const [showUrlChoice, setShowUrlChoice] = useState(false)
 
   const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/.test(url)
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
 
+  // Sync isPlaying from server on mount and when current song changes
   const currentSongId = currentSong?.id ?? null
   const prevSongIdRef = useRef<number | null>(null)
+  useEffect(() => {
+    fetch(`/api/player/state?room=${roomCode}`)
+      .then((r) => r.json())
+      .then(({ command }) => {
+        if (command === 'play') setIsPlaying(true)
+        if (command === 'pause') setIsPlaying(false)
+      })
+      .catch(() => {})
+  }, [roomCode, currentSongId])
+
   useEffect(() => {
     if (currentSongId !== prevSongIdRef.current) {
       prevSongIdRef.current = currentSongId
@@ -57,13 +73,38 @@ export default function RoomRemotePage() {
   }
 
   async function handlePlayPause() {
-    const next = !isPlaying
-    setIsPlaying(next)
-    await playerCmd(next ? 'play' : 'pause')
+    if (cmdPending) return
+    setCmdPending(true)
+    try {
+      const next = !isPlaying
+      setIsPlaying(next)
+      await playerCmd(next ? 'play' : 'pause')
+    } finally {
+      setCmdPending(false)
+    }
   }
 
-  async function handleNext()    { await playerCmd('next'); fetchQueue() }
-  async function handleRestart() { await playerCmd('restart') }
+  async function handleNext() {
+    if (cmdPending) return
+    setCmdPending(true)
+    try {
+      await playerCmd('next')
+      fetchQueue()
+    } finally {
+      setCmdPending(false)
+    }
+  }
+
+  async function handleRestart() {
+    if (cmdPending) return
+    setCmdPending(true)
+    try {
+      await playerCmd('restart')
+      setIsPlaying(true)
+    } finally {
+      setCmdPending(false)
+    }
+  }
 
   async function handlePlayNow(id: number) {
     await fetch(`/api/queue/${id}?room=${roomCode}`, {
@@ -202,20 +243,21 @@ export default function RoomRemotePage() {
         <div className="flex items-center justify-center gap-5 px-4 pb-4">
           <button
             onClick={handleRestart}
-            disabled={!currentSong}
+            disabled={!currentSong || cmdPending}
             className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-xl transition-all active:scale-[0.93]"
             aria-label="เริ่มเพลงใหม่"
           >↺</button>
           <button
             onClick={handlePlayPause}
-            className="w-[68px] h-[68px] flex items-center justify-center rounded-2xl bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-[26px] shadow-lg shadow-red-950/70 transition-all active:scale-[0.93]"
+            disabled={cmdPending}
+            className="w-[68px] h-[68px] flex items-center justify-center rounded-2xl bg-red-600 hover:bg-red-500 active:bg-red-700 disabled:opacity-60 disabled:pointer-events-none text-white text-[26px] shadow-lg shadow-red-950/70 transition-all active:scale-[0.93]"
             aria-label={isPlaying ? 'หยุด' : 'เล่น'}
           >
-            {isPlaying ? '⏸' : '▶'}
+            {cmdPending ? <span className="text-xl animate-spin">⏳</span> : isPlaying ? '⏸' : '▶'}
           </button>
           <button
             onClick={handleNext}
-            disabled={!hasNext}
+            disabled={!hasNext || cmdPending}
             className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
             aria-label="เพลงถัดไป"
           >⏭</button>

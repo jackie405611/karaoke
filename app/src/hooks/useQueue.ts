@@ -3,9 +3,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { QueueItem } from '@/types'
 
-export function useQueue(roomCode: string) {
+export function useQueue(roomCode: string, onPlayerCommand?: (cmd: string) => void) {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
+  const onPlayerCommandRef = useRef(onPlayerCommand)
+  onPlayerCommandRef.current = onPlayerCommand
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -27,6 +29,7 @@ export function useQueue(roomCode: string) {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'queue-update') fetchQueue()
+        if (data.type === 'player-command') onPlayerCommandRef.current?.(data.command)
       } catch {}
     }
     es.onerror = () => {
