@@ -67,6 +67,10 @@ export default function RoomAdminPage() {
           if (!playerRef.current) return
           if (data.command === 'play') playerRef.current.playVideo()
           if (data.command === 'pause') playerRef.current.pauseVideo()
+          if (data.command === 'restart') {
+            playerRef.current.seekTo(0, true)
+            playerRef.current.playVideo()
+          }
         }
       } catch {}
     }
@@ -105,9 +109,7 @@ export default function RoomAdminPage() {
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault()
-        if (!playerRef.current) return
-        if (isPlayingRef.current) playerRef.current.pauseVideo()
-        else playerRef.current.playVideo()
+        handlePlayPause()
       } else if (e.key === 'ArrowRight' || e.key === 'n' || e.key === 'N') {
         e.preventDefault()
         handleNext()
@@ -148,8 +150,14 @@ export default function RoomAdminPage() {
 
   function handlePlayPause() {
     if (!playerRef.current) return
-    if (isPlaying) playerRef.current.pauseVideo()
+    const playing = isPlayingRef.current
+    if (playing) playerRef.current.pauseVideo()
     else playerRef.current.playVideo()
+    fetch(`/api/player?room=${roomCode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: playing ? 'pause' : 'play' }),
+    }).catch(() => {})
   }
 
   async function handlePlayNow(id: number) {
