@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import Image from 'next/image'
 import type { QueueItem } from '@/types'
 import { usePlayerSSE } from '@/hooks/useQueue'
 
@@ -15,6 +16,7 @@ export default function RoomDisplayPage() {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [isPlaying, setIsPlaying] = useState(false)
   const [serverIp, setServerIp] = useState('')
+  const [queueVisible, setQueueVisible] = useState(true)
   const playerRef = useRef<YT.Player | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const queueRef = useRef(queue)
@@ -22,6 +24,7 @@ export default function RoomDisplayPage() {
   useEffect(() => { queueRef.current = queue }, [queue])
 
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
+  const upcomingQueue = queue.filter((q) => q.status !== 'done')
 
   const fetchQueue = useCallback(async () => {
     const res = await fetch(`/api/queue?room=${roomCode}`)
@@ -33,6 +36,12 @@ export default function RoomDisplayPage() {
     if (!roomCode) return
     fetchQueue()
     setServerIp(window.location.host)
+    fetch(`/api/player/state?room=${roomCode}`)
+      .then((r) => r.json())
+      .then(({ queue_visible }) => {
+        if (typeof queue_visible === 'boolean') setQueueVisible(queue_visible)
+      })
+      .catch(() => {})
   }, [roomCode, fetchQueue])
 
   const handleNext = useCallback(async () => {
@@ -64,6 +73,9 @@ export default function RoomDisplayPage() {
       if (cmd === 'play') playerRef.current.playVideo()
       if (cmd === 'pause') playerRef.current.pauseVideo()
       if (cmd === 'restart') { playerRef.current.seekTo(0, true); playerRef.current.playVideo() }
+    }, []),
+    useCallback((_action: string, visible: boolean) => {
+      setQueueVisible(visible)
     }, [])
   )
 
@@ -121,6 +133,55 @@ export default function RoomDisplayPage() {
           >
             ⛶ เต็มจอ
           </button>
+        </div>
+      </div>
+
+      {/* Queue overlay panel — slides in/out from right */}
+      <div
+        className={`absolute top-0 right-0 bottom-0 w-72 bg-black/80 backdrop-blur-sm flex flex-col transition-transform duration-300 ease-in-out ${
+          queueVisible ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="px-4 py-3 border-b border-white/10 flex-shrink-0">
+          <p className="text-white/50 text-xs uppercase tracking-widest font-semibold">คิวเพลง</p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+          {upcomingQueue.length === 0 ? (
+            <p className="text-white/25 text-sm text-center py-10">คิวว่าง</p>
+          ) : (
+            upcomingQueue.map((item) => {
+              const isNowPlaying = item.status === 'playing'
+              return (
+                <div
+                  key={item.id}
+                  className={`flex gap-3 items-center p-2 rounded-xl transition-colors ${
+                    isNowPlaying
+                      ? 'bg-red-900/50 border border-red-700/40'
+                      : 'bg-white/5'
+                  }`}
+                >
+                  <div className="relative w-14 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
+                    <Image
+                      src={item.thumbnail}
+                      alt={item.title}
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`text-sm font-medium truncate leading-snug ${isNowPlaying ? 'text-white' : 'text-white/65'}`}>
+                      {item.title}
+                    </p>
+                    <p className="text-xs text-white/35 truncate mt-0.5">
+                      🎤 {item.requested_by}
+                    </p>
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
       </div>
 

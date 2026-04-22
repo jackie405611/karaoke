@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { notifyPlayerCommand, notifyQueueUpdate } from '@/lib/events'
+import { notifyPlayerCommand, notifyQueueUpdate, notifyUiCommand } from '@/lib/events'
 import { getDb } from '@/lib/db'
 import { getRoomByCode, RoomError, roomNotFoundResponse } from '@/lib/rooms'
 
@@ -46,6 +46,18 @@ export async function POST(req: NextRequest) {
       }
       notifyQueueUpdate(room.code)
       return NextResponse.json({ success: true })
+    }
+
+    if (action === 'toggle_queue') {
+      await sql`INSERT INTO player_state (room_id) VALUES (${room.id}) ON CONFLICT DO NOTHING`
+      const [state] = await sql`
+        UPDATE player_state
+        SET queue_visible = NOT queue_visible, updated_at = NOW()
+        WHERE room_id = ${room.id}
+        RETURNING queue_visible
+      `
+      notifyUiCommand(room.code, { action: 'queue_visible', visible: state.queue_visible })
+      return NextResponse.json({ success: true, queue_visible: state.queue_visible })
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

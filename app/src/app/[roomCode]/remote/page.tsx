@@ -21,7 +21,7 @@ export default function RoomRemotePage() {
   const params = useParams<{ roomCode: string }>()
   const roomCode = (params.roomCode ?? '').toUpperCase()
 
-  const { queue, loading, fetchQueue, isPlaying, connected, roomExpired } = useRemote(roomCode)
+  const { queue, loading, fetchQueue, isPlaying, connected, roomExpired, queueVisible } = useRemote(roomCode)
 
   const [cmdPending, setCmdPending] = useState(false)
   const [cmdError, setCmdError]     = useState('')
@@ -94,6 +94,14 @@ export default function RoomRemotePage() {
     } finally {
       setCmdPending(false)
     }
+  }
+
+  async function handleToggleQueue() {
+    await fetch(`/api/player?room=${roomCode}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle_queue' }),
+    }).catch(() => {})
   }
 
   async function handleRestart() {
@@ -295,6 +303,20 @@ export default function RoomRemotePage() {
             className="w-11 h-11 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
             aria-label="เพลงถัดไป"
           >⏭</button>
+        </div>
+
+        <div className="flex items-center justify-center pb-3 -mt-1 gap-2">
+          <button
+            onClick={handleToggleQueue}
+            className={`flex items-center gap-1.5 text-xs px-4 py-1.5 rounded-full border transition-colors ${
+              queueVisible
+                ? 'bg-red-600/20 border-red-600/50 text-red-400'
+                : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            <span>📋</span>
+            <span>{queueVisible ? 'ซ่อนคิวบนจอใหญ่' : 'แสดงคิวบนจอใหญ่'}</span>
+          </button>
         </div>
 
         {cmdError && (

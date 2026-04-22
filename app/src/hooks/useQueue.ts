@@ -48,6 +48,7 @@ export function useRemote(roomCode: string) {
   const [playerCommand, setPlayerCommand] = useState<'play' | 'pause' | 'restart'>('play')
   const [connected, setConnected] = useState(true)
   const [roomExpired, setRoomExpired] = useState(false)
+  const [queueVisible, setQueueVisible] = useState(true)
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -66,10 +67,11 @@ export function useRemote(roomCode: string) {
 
     fetch(`/api/player/state?room=${roomCode}`)
       .then((r) => r.json())
-      .then(({ command }) => {
+      .then(({ command, queue_visible }) => {
         if (command === 'play' || command === 'pause' || command === 'restart') {
           setPlayerCommand(command)
         }
+        if (typeof queue_visible === 'boolean') setQueueVisible(queue_visible)
       })
       .catch(() => {})
 
@@ -84,6 +86,9 @@ export function useRemote(roomCode: string) {
         if (data.type === 'player-command') {
           const cmd = data.command as 'play' | 'pause' | 'restart'
           setPlayerCommand(cmd)
+        }
+        if (data.type === 'ui-command' && data.action === 'queue_visible') {
+          setQueueVisible(data.visible as boolean)
         }
       } catch {}
     }
@@ -110,18 +115,22 @@ export function useRemote(roomCode: string) {
     isPlaying: playerCommand === 'play' || playerCommand === 'restart',
     connected,
     roomExpired,
+    queueVisible,
   }
 }
 
 export function usePlayerSSE(
   roomCode: string,
   onQueueUpdate: () => void,
-  onPlayerCommand: (cmd: 'play' | 'pause' | 'restart') => void
+  onPlayerCommand: (cmd: 'play' | 'pause' | 'restart') => void,
+  onUiCommand?: (action: string, visible: boolean) => void
 ) {
   const onQueueUpdateRef = useRef(onQueueUpdate)
   const onPlayerCommandRef = useRef(onPlayerCommand)
+  const onUiCommandRef = useRef(onUiCommand)
   onQueueUpdateRef.current = onQueueUpdate
   onPlayerCommandRef.current = onPlayerCommand
+  onUiCommandRef.current = onUiCommand
 
   const lastSeqRef = useRef<number>(-1)
 
@@ -134,6 +143,9 @@ export function usePlayerSSE(
         if (data.type === 'player-command') {
           lastSeqRef.current = -2
           onPlayerCommandRef.current(data.command)
+        }
+        if (data.type === 'ui-command' && data.action === 'queue_visible') {
+          onUiCommandRef.current?.(data.action, data.visible as boolean)
         }
       } catch {}
     }

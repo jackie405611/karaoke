@@ -54,8 +54,9 @@ CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist ON playlist_items(playlis
 
 -- Per-room player state (replaces global singleton)
 CREATE TABLE IF NOT EXISTS player_state (
-  room_id    BIGINT PRIMARY KEY REFERENCES rooms(id) ON DELETE CASCADE,
-  command    TEXT NOT NULL DEFAULT 'play' CHECK(command IN ('play', 'pause', 'restart')),
-  seq        BIGINT NOT NULL DEFAULT 0,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  room_id       BIGINT PRIMARY KEY REFERENCES rooms(id) ON DELETE CASCADE,
+  command       TEXT NOT NULL DEFAULT 'play' CHECK(command IN ('play', 'pause', 'restart')),
+  seq           BIGINT NOT NULL DEFAULT 0,
+  queue_visible BOOLEAN NOT NULL DEFAULT true,
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

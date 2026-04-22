@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
 
   const queueEvent  = `room:${roomCode}:queue-update`
   const playerEvent = `room:${roomCode}:player-command`
+  const uiEvent     = `room:${roomCode}:ui-command`
 
   const stream = new ReadableStream({
     start(controller) {
@@ -24,11 +25,13 @@ export async function GET(req: NextRequest) {
 
       send({ type: 'connected' })
 
-      const onQueueUpdate = () => send({ type: 'queue-update' })
+      const onQueueUpdate  = () => send({ type: 'queue-update' })
       const onPlayerCommand = (command: string) => send({ type: 'player-command', command })
+      const onUiCommand    = (payload: object) => send({ type: 'ui-command', ...payload })
 
       emitter.on(queueEvent, onQueueUpdate)
       emitter.on(playerEvent, onPlayerCommand)
+      emitter.on(uiEvent, onUiCommand)
 
       // Keepalive ping every 25s to prevent proxy/browser timeouts
       const keepalive = setInterval(() => {
@@ -43,6 +46,7 @@ export async function GET(req: NextRequest) {
         clearInterval(keepalive)
         emitter.off(queueEvent, onQueueUpdate)
         emitter.off(playerEvent, onPlayerCommand)
+        emitter.off(uiEvent, onUiCommand)
       }
     },
     cancel() {

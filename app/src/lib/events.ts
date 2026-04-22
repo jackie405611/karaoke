@@ -12,4 +12,8 @@ export function notifyPlayerCommand(roomCode: string, command: 'play' | 'pause' 
   emitter.emit(`room:${roomCode.toUpperCase()}:player-command`, command)
 }
 
+export function notifyUiCommand(roomCode: string, payload: object) {
+  emitter.emit(`room:${roomCode.toUpperCase()}:ui-command`, payload)
+}
+
 export { emitter }
