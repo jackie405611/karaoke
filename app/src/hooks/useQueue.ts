@@ -42,6 +42,77 @@ export function useQueue(roomCode: string, onPlayerCommand?: (cmd: string) => vo
   return { queue, loading, fetchQueue }
 }
 
+export function useRemote(roomCode: string) {
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [playerCommand, setPlayerCommand] = useState<'play' | 'pause' | 'restart'>('play')
+  const [connected, setConnected] = useState(true)
+  const [roomExpired, setRoomExpired] = useState(false)
+
+  const fetchQueue = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/queue?room=${roomCode}`)
+      const data = await res.json()
+      setQueue(Array.isArray(data) ? data : [])
+    } catch {
+      // keep existing queue on transient network error
+    } finally {
+      setLoading(false)
+    }
+  }, [roomCode])
+
+  useEffect(() => {
+    fetchQueue()
+
+    fetch(`/api/player/state?room=${roomCode}`)
+      .then((r) => r.json())
+      .then(({ command }) => {
+        if (command === 'play' || command === 'pause' || command === 'restart') {
+          setPlayerCommand(command)
+        }
+      })
+      .catch(() => {})
+
+    const es = new EventSource(`/api/events?room=${roomCode}`)
+    es.onopen = () => setConnected(true)
+    es.onerror = () => setConnected(false)
+    es.onmessage = (e) => {
+      setConnected(true)
+      try {
+        const data = JSON.parse(e.data)
+        if (data.type === 'queue-update') fetchQueue()
+        if (data.type === 'player-command') {
+          const cmd = data.command as 'play' | 'pause' | 'restart'
+          setPlayerCommand(cmd)
+        }
+      } catch {}
+    }
+
+    return () => es.close()
+  }, [roomCode, fetchQueue])
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch(`/api/rooms/${roomCode}`)
+        if (res.status === 404) setRoomExpired(true)
+      } catch {}
+    }
+    const id = setInterval(check, 60_000)
+    return () => clearInterval(id)
+  }, [roomCode])
+
+  return {
+    queue,
+    loading,
+    fetchQueue,
+    playerCommand,
+    isPlaying: playerCommand === 'play' || playerCommand === 'restart',
+    connected,
+    roomExpired,
+  }
+}
+
 export function usePlayerSSE(
   roomCode: string,
   onQueueUpdate: () => void,

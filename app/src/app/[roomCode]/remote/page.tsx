@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Image from 'next/image'
-import { useQueue } from '@/hooks/useQueue'
+import { useRemote } from '@/hooks/useQueue'
 import SearchPanel from '@/components/SearchPanel'
 import PlaylistPanel from '@/components/PlaylistPanel'
 import SaveToPlaylistModal from '@/components/SaveToPlaylistModal'
@@ -21,13 +21,12 @@ export default function RoomRemotePage() {
   const params = useParams<{ roomCode: string }>()
   const roomCode = (params.roomCode ?? '').toUpperCase()
 
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [cmdPending, setCmdPending] = useState(false)
+  const { queue, loading, fetchQueue, isPlaying, connected, roomExpired } = useRemote(roomCode)
 
-  const { queue, loading, fetchQueue } = useQueue(roomCode, (cmd) => {
-    if (cmd === 'play' || cmd === 'restart') setIsPlaying(true)
-    if (cmd === 'pause') setIsPlaying(false)
-  })
+  const [cmdPending, setCmdPending] = useState(false)
+  const [cmdError, setCmdError]     = useState('')
+  const cmdErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [tab, setTab]             = useState<Tab>('queue')
   const [requester, setRequester] = useState('')
   const [url, setUrl]             = useState('')
@@ -39,57 +38,59 @@ export default function RoomRemotePage() {
   const [showUrlChoice, setShowUrlChoice] = useState(false)
 
   const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/.test(url)
-  const currentSong = queue.find((q) => q.status === 'playing') ?? null
+  const currentSong   = queue.find((q) => q.status === 'playing') ?? null
+  const hasNext       = queue.some((q) => q.status === 'queued')
+  const hasPrev       = queue.some((q) => q.status === 'done')
+  const queueCount    = queue.filter((q) => q.status !== 'done').length
 
-  // Sync isPlaying from server on mount and when current song changes
-  const currentSongId = currentSong?.id ?? null
-  const prevSongIdRef = useRef<number | null>(null)
-  useEffect(() => {
-    fetch(`/api/player/state?room=${roomCode}`)
-      .then((r) => r.json())
-      .then(({ command }) => {
-        if (command === 'play') setIsPlaying(true)
-        if (command === 'pause') setIsPlaying(false)
-      })
-      .catch(() => {})
-  }, [roomCode, currentSongId])
-
-  useEffect(() => {
-    if (currentSongId !== prevSongIdRef.current) {
-      prevSongIdRef.current = currentSongId
-      if (currentSongId !== null) setIsPlaying(true)
-    }
-  }, [currentSongId])
-
-  const hasNext    = queue.some((q) => q.status === 'queued')
-  const queueCount = queue.filter((q) => q.status !== 'done').length
+  function showCmdError(msg: string) {
+    setCmdError(msg)
+    if (cmdErrorTimerRef.current) clearTimeout(cmdErrorTimerRef.current)
+    cmdErrorTimerRef.current = setTimeout(() => setCmdError(''), 3000)
+  }
 
   async function playerCmd(action: string) {
-    await fetch(`/api/player?room=${roomCode}`, {
+    const res = await fetch(`/api/player?room=${roomCode}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action }),
     })
+    if (!res.ok) throw new Error('failed')
   }
 
   async function handlePlayPause() {
     if (cmdPending) return
     setCmdPending(true)
     try {
-      const next = !isPlaying
-      setIsPlaying(next)
-      await playerCmd(next ? 'play' : 'pause')
+      await playerCmd(isPlaying ? 'pause' : 'play')
+    } catch {
+      showCmdError('คำสั่งไม่สำเร็จ ลองใหม่')
     } finally {
       setCmdPending(false)
     }
   }
 
   async function handleNext() {
-    if (cmdPending) return
+    if (cmdPending || !hasNext) return
     setCmdPending(true)
     try {
       await playerCmd('next')
       fetchQueue()
+    } catch {
+      showCmdError('คำสั่งไม่สำเร็จ ลองใหม่')
+    } finally {
+      setCmdPending(false)
+    }
+  }
+
+  async function handlePrev() {
+    if (cmdPending || !hasPrev) return
+    setCmdPending(true)
+    try {
+      await playerCmd('prev')
+      fetchQueue()
+    } catch {
+      showCmdError('คำสั่งไม่สำเร็จ ลองใหม่')
     } finally {
       setCmdPending(false)
     }
@@ -100,7 +101,8 @@ export default function RoomRemotePage() {
     setCmdPending(true)
     try {
       await playerCmd('restart')
-      setIsPlaying(true)
+    } catch {
+      showCmdError('คำสั่งไม่สำเร็จ ลองใหม่')
     } finally {
       setCmdPending(false)
     }
@@ -196,9 +198,26 @@ export default function RoomRemotePage() {
 
   return (
     <div
-      className="flex flex-col bg-gray-950 text-white overflow-hidden"
+      className="relative flex flex-col bg-gray-950 text-white overflow-hidden"
       style={{ height: '100dvh' }}
     >
+      {/* Room Expired Overlay */}
+      {roomExpired && (
+        <div className="absolute inset-0 z-50 bg-gray-950/97 flex flex-col items-center justify-center gap-5 p-8">
+          <span className="text-6xl">🎤</span>
+          <p className="text-white text-xl font-semibold text-center">ห้องนี้ปิดแล้ว</p>
+          <p className="text-gray-500 text-sm text-center leading-relaxed">
+            ห้องคาราโอเกะนี้หมดอายุหรือถูกปิดไปแล้ว<br />กลับไปหน้าหลักเพื่อเข้าร่วมห้องใหม่
+          </p>
+          <a
+            href="/"
+            className="bg-red-600 hover:bg-red-500 text-white px-8 py-3 rounded-2xl font-medium transition-colors"
+          >
+            กลับหน้าหลัก
+          </a>
+        </div>
+      )}
+
       {/* Now Playing + Controls */}
       <div className="flex-shrink-0 bg-gray-900/95 border-b border-gray-800">
         <div
@@ -231,6 +250,14 @@ export default function RoomRemotePage() {
             )}
           </div>
 
+          {/* Connection status dot */}
+          <div
+            title={connected ? 'เชื่อมต่อแล้ว' : 'กำลังเชื่อมต่อใหม่...'}
+            className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${
+              connected ? 'bg-green-500' : 'bg-red-500 animate-pulse'
+            }`}
+          />
+
           <input
             type="text"
             value={requester}
@@ -240,17 +267,24 @@ export default function RoomRemotePage() {
           />
         </div>
 
-        <div className="flex items-center justify-center gap-5 px-4 pb-4">
+        {/* Player Controls: Prev | Restart | Play/Pause | Next */}
+        <div className="flex items-center justify-center gap-3 px-4 pb-3">
+          <button
+            onClick={handlePrev}
+            disabled={!hasPrev || cmdPending}
+            className="w-11 h-11 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
+            aria-label="เพลงก่อนหน้า"
+          >⏮</button>
           <button
             onClick={handleRestart}
             disabled={!currentSong || cmdPending}
-            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-xl transition-all active:scale-[0.93]"
+            className="w-11 h-11 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-xl transition-all active:scale-[0.93]"
             aria-label="เริ่มเพลงใหม่"
           >↺</button>
           <button
             onClick={handlePlayPause}
             disabled={cmdPending}
-            className="w-[68px] h-[68px] flex items-center justify-center rounded-2xl bg-red-600 hover:bg-red-500 active:bg-red-700 disabled:opacity-60 disabled:pointer-events-none text-white text-[26px] shadow-lg shadow-red-950/70 transition-all active:scale-[0.93]"
+            className="w-[64px] h-[64px] flex items-center justify-center rounded-2xl bg-red-600 hover:bg-red-500 active:bg-red-700 disabled:opacity-60 disabled:pointer-events-none text-white text-[26px] shadow-lg shadow-red-950/70 transition-all active:scale-[0.93]"
             aria-label={isPlaying ? 'หยุด' : 'เล่น'}
           >
             {cmdPending ? <span className="text-xl animate-spin">⏳</span> : isPlaying ? '⏸' : '▶'}
@@ -258,10 +292,14 @@ export default function RoomRemotePage() {
           <button
             onClick={handleNext}
             disabled={!hasNext || cmdPending}
-            className="w-12 h-12 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
+            className="w-11 h-11 flex items-center justify-center rounded-2xl bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-20 disabled:pointer-events-none text-white text-lg transition-all active:scale-[0.93]"
             aria-label="เพลงถัดไป"
           >⏭</button>
         </div>
+
+        {cmdError && (
+          <p className="text-center text-red-400 text-xs pb-2 -mt-1">{cmdError}</p>
+        )}
       </div>
 
       {/* Tab Content */}
