@@ -29,7 +29,7 @@ export default function RoomRemotePage() {
   const params = useParams<{ roomCode: string }>()
   const roomCode = (params.roomCode ?? '').toUpperCase()
 
-  const { queue, loading, fetchQueue, isPlaying, connected, roomExpired, queueVisible } =
+  const { queue, loading, fetchQueue, isPlaying, connected, roomExpired, queueVisible, setQueueVisible } =
     useRemote(roomCode)
 
   const [cmdPending, setCmdPending] = useState(false)
@@ -90,11 +90,17 @@ export default function RoomRemotePage() {
 
   async function handleToggleQueue() {
     vibrate(8)
-    await fetch(`/api/player?room=${roomCode}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'toggle_queue' }),
-    }).catch(() => {})
+    try {
+      const res = await fetch(`/api/player?room=${roomCode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle_queue' }),
+      })
+      const data = await res.json()
+      if (res.ok && typeof data.queue_visible === 'boolean') {
+        setQueueVisible(data.queue_visible)
+      }
+    } catch {}
   }
 
   async function handlePlayNow(id: number) {

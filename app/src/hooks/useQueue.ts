@@ -116,6 +116,7 @@ export function useRemote(roomCode: string) {
     connected,
     roomExpired,
     queueVisible,
+    setQueueVisible,
   }
 }
 
