@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { notifyPlayerCommand, notifyQueueUpdate } from '@/lib/events'
 import { getDb } from '@/lib/db'
 import { getRoomByCode, RoomError, roomNotFoundResponse } from '@/lib/rooms'
+import { checkDedupe, checkRateLimit, getClientFingerprint } from '@/lib/requestGuard'
+import { checkQueuePrecondition } from '@/lib/queueState'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +11,19 @@ export async function POST(req: NextRequest) {
   try {
     const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
     const { action } = await req.json()
+    const actor = getClientFingerprint(req.headers.get('x-forwarded-for'), req.headers.get('user-agent'))
+    const actionKey = `player:${String(action ?? 'unknown')}`
+
+    const rate = checkRateLimit({ roomCode: room.code, actor, action: actionKey, maxRequests: 24, windowMs: 10_000 })
+    if (!rate.allowed) {
+      return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 })
+    }
+
+    const dedupe = checkDedupe({ roomCode: room.code, actor, action: actionKey, dedupeWindowMs: 300 })
+    if (!dedupe.allowed) {
+      return NextResponse.json({ error: 'Duplicate request ignored.' }, { status: 409 })
+    }
+
     const sql = getDb()
 
     if (action === 'play' || action === 'pause' || action === 'restart') {
@@ -25,6 +40,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'next') {
+      const precondition = await checkQueuePrecondition(req, sql, Number(room.id))
+      if (precondition) return precondition
       const playing = await sql`SELECT id FROM queue WHERE room_id = ${room.id} AND status = 'playing' LIMIT 1`
       if (playing.length > 0) {
         await sql`UPDATE queue SET status = 'done' WHERE id = ${playing[0].id}`
@@ -36,6 +53,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'prev') {
+      const precondition = await checkQueuePrecondition(req, sql, Number(room.id))
+      if (precondition) return precondition
       const playing = await sql`SELECT id FROM queue WHERE room_id = ${room.id} AND status = 'playing' LIMIT 1`
       if (playing.length > 0) await sql`UPDATE queue SET status = 'queued' WHERE id = ${playing[0].id}`
       const prev = await sql`SELECT id FROM queue WHERE room_id = ${room.id} AND status = 'done' ORDER BY queue_order DESC LIMIT 1`

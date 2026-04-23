@@ -21,7 +21,7 @@ export default function RoomRemotePage() {
   const params = useParams<{ roomCode: string }>()
   const roomCode = (params.roomCode ?? '').toUpperCase()
 
-  const { queue, loading, fetchQueue } = useQueue(roomCode)
+  const { queue, loading, fetchQueue, queueHash } = useQueue(roomCode)
   const [tab, setTab]             = useState<Tab>('queue')
   const [requester, setRequester] = useState('')
   const [url, setUrl]             = useState('')
@@ -32,6 +32,7 @@ export default function RoomRemotePage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [clearingQueue, setClearingQueue] = useState(false)
   const [showUrlChoice, setShowUrlChoice] = useState(false)
+  const [reorderPendingId, setReorderPendingId] = useState<number | null>(null)
 
   const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/.test(url)
   const currentSong = queue.find((q) => q.status === 'playing') ?? null
@@ -49,11 +50,15 @@ export default function RoomRemotePage() {
   const queueCount = queue.filter((q) => q.status !== 'done').length
 
   async function playerCmd(action: string) {
-    await fetch(`/api/player?room=${roomCode}`, {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (queueHash && (action === 'next' || action === 'prev')) headers['x-queue-hash'] = queueHash
+
+    const res = await fetch(`/api/player?room=${roomCode}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ action }),
     })
+    if (res.status === 409) await fetchQueue()
   }
 
   async function handlePlayPause() {
@@ -66,24 +71,65 @@ export default function RoomRemotePage() {
   async function handleRestart() { await playerCmd('restart') }
 
   async function handlePlayNow(id: number) {
-    await fetch(`/api/queue/${id}?room=${roomCode}`, {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (queueHash) headers['x-queue-hash'] = queueHash
+
+    const res = await fetch(`/api/queue/${id}?room=${roomCode}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ action: 'play_now' }),
     })
+    if (res.status === 409) return fetchQueue()
     fetchQueue()
   }
 
   async function handleRemove(id: number) {
-    await fetch(`/api/queue/${id}?room=${roomCode}`, { method: 'DELETE' })
+    const headers: Record<string, string> = {}
+    if (queueHash) headers['x-queue-hash'] = queueHash
+
+    const res = await fetch(`/api/queue/${id}?room=${roomCode}`, { method: 'DELETE', headers })
+    if (res.status === 409) return fetchQueue()
     fetchQueue()
+  }
+
+  async function handleReorder(id: number, direction: 'up' | 'down') {
+    const queuedIds = queue.filter((q) => q.status === 'queued').map((q) => q.id)
+    const idx = queuedIds.indexOf(id)
+    if (idx < 0) return
+
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= queuedIds.length) return
+
+    const nextOrder = [...queuedIds]
+    ;[nextOrder[idx], nextOrder[targetIdx]] = [nextOrder[targetIdx], nextOrder[idx]]
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (queueHash) headers['x-queue-hash'] = queueHash
+
+    setReorderPendingId(id)
+    try {
+      const res = await fetch(`/api/queue/reorder?room=${roomCode}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ordered_ids: nextOrder }),
+      })
+      if (res.status === 409) return fetchQueue()
+      if (!res.ok) throw new Error('failed')
+      fetchQueue()
+    } finally {
+      setReorderPendingId(null)
+    }
   }
 
   async function handleClearQueue() {
     if (!confirm('ล้างคิวเพลงทั้งหมด? (เพลงที่กำลังเล่นจะยังคงอยู่)')) return
     setClearingQueue(true)
     try {
-      await fetch(`/api/queue/clear?room=${roomCode}`, { method: 'DELETE' })
+      const headers: Record<string, string> = {}
+      if (queueHash) headers['x-queue-hash'] = queueHash
+
+      const res = await fetch(`/api/queue/clear?room=${roomCode}`, { method: 'DELETE', headers })
+      if (res.status === 409) return fetchQueue()
       fetchQueue()
     } finally {
       setClearingQueue(false)
@@ -107,9 +153,12 @@ export default function RoomRemotePage() {
     setAddError('')
     setAddSuccess('')
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (queueHash) headers['x-queue-hash'] = queueHash
+
       const res = await fetch(`/api/queue?room=${roomCode}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ youtube_url: submitUrl, requested_by: requester.trim() || 'Guest' }),
       })
       const data = await res.json()
@@ -144,14 +193,17 @@ export default function RoomRemotePage() {
   }
 
   const handleAddFromSearch = useCallback(async (videoId: string) => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (queueHash) headers['x-queue-hash'] = queueHash
+
     const res = await fetch(`/api/queue?room=${roomCode}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ youtube_url: videoId, requested_by: requester.trim() || 'Guest' }),
     })
     if (!res.ok) throw new Error('Failed')
     fetchQueue()
-  }, [roomCode, requester, fetchQueue])
+  }, [roomCode, requester, fetchQueue, queueHash])
 
   return (
     <div
@@ -314,67 +366,90 @@ export default function RoomRemotePage() {
                 </div>
               ) : (
                 <ul className="flex flex-col gap-1.5 pb-2">
-                  {queue.map((item, index) => {
-                    const isNowPlaying = item.status === 'playing'
-                    const isDone       = item.status === 'done'
-                    return (
-                      <li
-                        key={item.id}
-                        className={`flex items-center gap-2.5 p-2.5 rounded-2xl border transition-all ${
-                          isNowPlaying
-                            ? 'bg-red-950/40 border-red-800/50'
-                            : isDone
-                            ? 'bg-gray-900/20 border-gray-800/30 opacity-45'
-                            : 'bg-gray-800/40 border-gray-700/30'
-                        }`}
-                      >
-                        <div className="w-5 text-center flex-shrink-0 flex items-center justify-center">
-                          {isNowPlaying ? (
-                            <span className="block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                          ) : (
-                            <span className="text-[11px] text-gray-600">{index + 1}</span>
-                          )}
-                        </div>
-                        <div className="relative w-12 h-9 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
-                          <Image src={item.thumbnail} alt={item.title} fill sizes="48px" className="object-cover" unoptimized />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          {isNowPlaying ? (
-                            <div className="marquee-container leading-snug">
-                              <div className="marquee-track">
-                                <span className="text-sm font-medium text-white">{item.title}</span>
-                                <span className="text-sm font-medium text-white">{item.title}</span>
+                  {/** queued-only ordering controls use queued position, not list index */}
+                  {(() => {
+                    const queuedIds = queue.filter((q) => q.status === 'queued').map((q) => q.id)
+                    return queue.map((item, index) => {
+                      const isNowPlaying = item.status === 'playing'
+                      const isDone       = item.status === 'done'
+                      const queuedIndex = queuedIds.indexOf(item.id)
+                      const canMoveUp = queuedIndex > 0
+                      const canMoveDown = queuedIndex >= 0 && queuedIndex < queuedIds.length - 1
+                      return (
+                        <li
+                          key={item.id}
+                          className={`flex items-center gap-2.5 p-2.5 rounded-2xl border transition-all ${
+                            isNowPlaying
+                              ? 'bg-red-950/40 border-red-800/50'
+                              : isDone
+                              ? 'bg-gray-900/20 border-gray-800/30 opacity-45'
+                              : 'bg-gray-800/40 border-gray-700/30'
+                          }`}
+                        >
+                          <div className="w-5 text-center flex-shrink-0 flex items-center justify-center">
+                            {isNowPlaying ? (
+                              <span className="block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            ) : (
+                              <span className="text-[11px] text-gray-600">{index + 1}</span>
+                            )}
+                          </div>
+                          <div className="relative w-12 h-9 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
+                            <Image src={item.thumbnail} alt={item.title} fill sizes="48px" className="object-cover" unoptimized />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            {isNowPlaying ? (
+                              <div className="marquee-container leading-snug">
+                                <div className="marquee-track">
+                                  <span className="text-sm font-medium text-white">{item.title}</span>
+                                  <span className="text-sm font-medium text-white">{item.title}</span>
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <p className="text-sm font-medium text-gray-200 truncate leading-snug">{item.title}</p>
-                          )}
-                          <p className="text-xs text-gray-600 truncate mt-0.5">🎤 {item.requested_by}</p>
-                        </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          {!isNowPlaying && !isDone && (
+                            ) : (
+                              <p className="text-sm font-medium text-gray-200 truncate leading-snug">{item.title}</p>
+                            )}
+                            <p className="text-xs text-gray-600 truncate mt-0.5">🎤 {item.requested_by}</p>
+                          </div>
+                          <div className="flex gap-1 flex-shrink-0">
+                            {!isNowPlaying && !isDone && (
+                              <>
+                                <button
+                                  onClick={() => handleReorder(item.id, 'up')}
+                                  disabled={!canMoveUp || reorderPendingId === item.id}
+                                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-gray-600/50 active:bg-gray-600 disabled:opacity-35 disabled:pointer-events-none text-gray-300 text-sm transition-all active:scale-[0.93]"
+                                  title="เลื่อนขึ้น"
+                                >↑</button>
+                                <button
+                                  onClick={() => handleReorder(item.id, 'down')}
+                                  disabled={!canMoveDown || reorderPendingId === item.id}
+                                  className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-gray-600/50 active:bg-gray-600 disabled:opacity-35 disabled:pointer-events-none text-gray-300 text-sm transition-all active:scale-[0.93]"
+                                  title="เลื่อนลง"
+                                >↓</button>
+                              </>
+                            )}
+                            {!isNowPlaying && !isDone && (
+                              <button
+                                onClick={() => handlePlayNow(item.id)}
+                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-green-900/30 hover:bg-green-800/50 active:bg-green-800 text-green-500 text-sm transition-all active:scale-[0.93]"
+                                title="เล่นเดี๋ยวนี้"
+                              >▶</button>
+                            )}
                             <button
-                              onClick={() => handlePlayNow(item.id)}
-                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-green-900/30 hover:bg-green-800/50 active:bg-green-800 text-green-500 text-sm transition-all active:scale-[0.93]"
-                              title="เล่นเดี๋ยวนี้"
-                            >▶</button>
-                          )}
-                          <button
-                            onClick={() => setSaveTarget(item)}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-blue-900/40 active:bg-blue-900 text-gray-500 hover:text-blue-400 text-sm transition-all active:scale-[0.93]"
-                            title="บันทึกในเพลย์ลิสต์"
-                          >💾</button>
-                          {!isNowPlaying && (
-                            <button
-                              onClick={() => handleRemove(item.id)}
-                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-red-900/40 active:bg-red-900 text-gray-500 hover:text-red-400 text-sm transition-all active:scale-[0.93]"
-                              title="ลบออกจากคิว"
-                            >✕</button>
-                          )}
-                        </div>
-                      </li>
-                    )
-                  })}
+                              onClick={() => setSaveTarget(item)}
+                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-blue-900/40 active:bg-blue-900 text-gray-500 hover:text-blue-400 text-sm transition-all active:scale-[0.93]"
+                              title="บันทึกในเพลย์ลิสต์"
+                            >💾</button>
+                            {!isNowPlaying && (
+                              <button
+                                onClick={() => handleRemove(item.id)}
+                                className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/30 hover:bg-red-900/40 active:bg-red-900 text-gray-500 hover:text-red-400 text-sm transition-all active:scale-[0.93]"
+                                title="ลบออกจากคิว"
+                              >✕</button>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })
+                  })()}
                 </ul>
               )}
             </div>

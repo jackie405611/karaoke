@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS queue (
   room_id     BIGINT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
   video_id    BIGINT NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
   queue_order INTEGER NOT NULL DEFAULT 0,
+  queue_seq   BIGINT NOT NULL DEFAULT 0,
   status      TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','playing','done')),
   requested_by TEXT NOT NULL DEFAULT 'Guest',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()

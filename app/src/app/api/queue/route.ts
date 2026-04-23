@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { notifyQueueUpdate } from '@/lib/events'
 import { getRoomByCode, RoomError, roomNotFoundResponse } from '@/lib/rooms'
+import { checkDedupe, checkRateLimit, getClientFingerprint } from '@/lib/requestGuard'
+import { attachQueueStateHeaders, checkQueuePrecondition, getQueueState } from '@/lib/queueState'
 import {
   extractVideoId,
   extractPlaylistId,
@@ -23,7 +25,9 @@ export async function GET(req: NextRequest) {
       WHERE q.room_id = ${room.id} AND q.status != 'done'
       ORDER BY q.queue_order ASC
     `
-    return NextResponse.json(rows)
+
+    const meta = await getQueueState(sql, Number(room.id))
+    return attachQueueStateHeaders(NextResponse.json(rows), meta)
   } catch (err) {
     if (err instanceof RoomError) return roomNotFoundResponse()
     console.error(err)
@@ -34,10 +38,34 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
+    const actor = getClientFingerprint(req.headers.get('x-forwarded-for'), req.headers.get('user-agent'))
+    const rate = checkRateLimit({
+      roomCode: room.code,
+      actor,
+      action: 'queue:add',
+      maxRequests: 12,
+      windowMs: 10_000,
+    })
+    if (!rate.allowed) {
+      return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 })
+    }
+
+    const dedupe = checkDedupe({
+      roomCode: room.code,
+      actor,
+      action: 'queue:add',
+      dedupeWindowMs: 700,
+    })
+    if (!dedupe.allowed) {
+      return NextResponse.json({ error: 'Duplicate request ignored.' }, { status: 409 })
+    }
+
     const { youtube_url, requested_by = 'Guest' } = await req.json()
     if (!youtube_url) return NextResponse.json({ error: 'youtube_url is required' }, { status: 400 })
 
     const sql = getDb()
+    const precondition = await checkQueuePrecondition(req, sql, Number(room.id))
+    if (precondition) return precondition
 
     // ── Playlist URL ──────────────────────────────────────────────────────
     const playlistId = extractPlaylistId(youtube_url)

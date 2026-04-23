@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 import Image from 'next/image'
 import { useRemote } from '@/hooks/useQueue'
 import SearchPanel from '@/components/SearchPanel'
@@ -29,7 +30,7 @@ export default function RoomRemotePage() {
   const params = useParams<{ roomCode: string }>()
   const roomCode = (params.roomCode ?? '').toUpperCase()
 
-  const { queue, loading, fetchQueue, isPlaying, connected, roomExpired, queueVisible, setQueueVisible } =
+  const { queue, loading, fetchQueue, queueHash, isPlaying, connected, roomExpired, queueVisible, setQueueVisible } =
     useRemote(roomCode)
 
   const [cmdPending, setCmdPending] = useState(false)
@@ -65,11 +66,18 @@ export default function RoomRemotePage() {
   }
 
   async function playerCmd(action: string) {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (queueHash && (action === 'next' || action === 'prev')) headers['x-queue-hash'] = queueHash
+
     const res = await fetch(`/api/player?room=${roomCode}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ action }),
     })
+    if (res.status === 409) {
+      await fetchQueue()
+      throw new Error('conflict')
+    }
     if (!res.ok) throw new Error('failed')
   }
 
@@ -105,26 +113,85 @@ export default function RoomRemotePage() {
 
   async function handlePlayNow(id: number) {
     vibrate(8)
-    await fetch(`/api/queue/${id}?room=${roomCode}`, {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (queueHash) headers['x-queue-hash'] = queueHash
+
+    const res = await fetch(`/api/queue/${id}?room=${roomCode}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ action: 'play_now' }),
     })
+    if (res.status === 409) {
+      await fetchQueue()
+      toast('คิวเปลี่ยนจากเครื่องอื่น กำลังรีเฟรช', 'info')
+      return
+    }
     fetchQueue()
     toast('เล่นเพลงนี้แล้ว', 'success')
   }
 
   async function handleRemove(id: number) {
     vibrate(8)
-    await fetch(`/api/queue/${id}?room=${roomCode}`, { method: 'DELETE' })
+    const headers: Record<string, string> = {}
+    if (queueHash) headers['x-queue-hash'] = queueHash
+
+    const res = await fetch(`/api/queue/${id}?room=${roomCode}`, { method: 'DELETE', headers })
+    if (res.status === 409) {
+      await fetchQueue()
+      toast('คิวเปลี่ยนจากเครื่องอื่น กำลังรีเฟรช', 'info')
+      return
+    }
     fetchQueue()
+  }
+
+  async function handleReorder(id: number, direction: 'up' | 'down') {
+    const queuedIds = queue.filter((q) => q.status === 'queued').map((q) => q.id)
+    const idx = queuedIds.indexOf(id)
+    if (idx < 0) return
+
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= queuedIds.length) return
+
+    const orderedIds = [...queuedIds]
+    ;[orderedIds[idx], orderedIds[targetIdx]] = [orderedIds[targetIdx], orderedIds[idx]]
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (queueHash) headers['x-queue-hash'] = queueHash
+
+    vibrate(8)
+    try {
+      const res = await fetch(`/api/queue/reorder?room=${roomCode}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      })
+
+      if (res.status === 409) {
+        await fetchQueue()
+        toast('คิวเปลี่ยนจากเครื่องอื่น กำลังรีเฟรช', 'info')
+        return
+      }
+      if (!res.ok) throw new Error('failed')
+
+      fetchQueue()
+    } catch {
+      toast('จัดลำดับคิวไม่สำเร็จ ลองใหม่', 'error')
+    }
   }
 
   async function handleClearQueue() {
     if (!confirm('ล้างคิวเพลงทั้งหมด?\n(เพลงที่กำลังเล่นจะยังคงอยู่)')) return
     setClearingQueue(true)
     try {
-      await fetch(`/api/queue/clear?room=${roomCode}`, { method: 'DELETE' })
+      const headers: Record<string, string> = {}
+      if (queueHash) headers['x-queue-hash'] = queueHash
+
+      const res = await fetch(`/api/queue/clear?room=${roomCode}`, { method: 'DELETE', headers })
+      if (res.status === 409) {
+        await fetchQueue()
+        toast('คิวเปลี่ยนจากเครื่องอื่น กำลังรีเฟรช', 'info')
+        return
+      }
       fetchQueue()
       toast('ล้างคิวแล้ว', 'success')
     } finally {
@@ -146,9 +213,12 @@ export default function RoomRemotePage() {
     setShowUrlChoice(false)
     setAddLoading(true)
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (queueHash) headers['x-queue-hash'] = queueHash
+
       const res = await fetch(`/api/queue?room=${roomCode}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           youtube_url: submitUrl,
           requested_by: requester.trim() || 'Guest',
@@ -188,15 +258,18 @@ export default function RoomRemotePage() {
 
   const handleAddFromSearch = useCallback(
     async (videoId: string) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (queueHash) headers['x-queue-hash'] = queueHash
+
       const res = await fetch(`/api/queue?room=${roomCode}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ youtube_url: videoId, requested_by: requester.trim() || 'Guest' }),
       })
       if (!res.ok) throw new Error('Failed')
       fetchQueue()
     },
-    [roomCode, requester, fetchQueue]
+    [roomCode, requester, fetchQueue, queueHash]
   )
 
   return (
@@ -235,12 +308,12 @@ export default function RoomRemotePage() {
             <br />
             กลับไปหน้าหลักเพื่อเข้าร่วมห้องใหม่
           </p>
-          <a
+          <Link
             href="/"
             className="bg-red-600 hover:bg-red-500 active:bg-red-700 text-white px-8 py-3 rounded-2xl font-medium transition-colors"
           >
             กลับหน้าหลัก
-          </a>
+          </Link>
         </div>
       )}
 
@@ -398,6 +471,8 @@ export default function RoomRemotePage() {
             onChoosePlaylist={() => doAddUrl(url.trim())}
             onPlayNow={handlePlayNow}
             onRemove={handleRemove}
+            onMoveUp={(id) => handleReorder(id, 'up')}
+            onMoveDown={(id) => handleReorder(id, 'down')}
             onSave={setSaveTarget}
             onClear={handleClearQueue}
           />
@@ -517,6 +592,8 @@ function QueueTab({
   onChoosePlaylist,
   onPlayNow,
   onRemove,
+  onMoveUp,
+  onMoveDown,
   onSave,
   onClear,
 }: {
@@ -535,10 +612,13 @@ function QueueTab({
   onChoosePlaylist: () => void
   onPlayNow: (id: number) => void
   onRemove: (id: number) => void
+  onMoveUp: (id: number) => void
+  onMoveDown: (id: number) => void
   onSave: (item: QueueItem) => void
   onClear: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const queuedIds = queue.filter((q) => q.status === 'queued').map((q) => q.id)
 
   return (
     <div className="h-full overflow-y-auto overscroll-contain">
@@ -636,6 +716,9 @@ function QueueTab({
             {queue.map((item, index) => {
               const isNowPlaying = item.status === 'playing'
               const isDone       = item.status === 'done'
+              const queuedIndex = queuedIds.indexOf(item.id)
+              const canMoveUp = queuedIndex > 0
+              const canMoveDown = queuedIndex >= 0 && queuedIndex < queuedIds.length - 1
               return (
                 <li
                   key={item.id}
@@ -685,6 +768,22 @@ function QueueTab({
 
                   {/* Actions */}
                   <div className="flex gap-1 flex-shrink-0">
+                    {!isNowPlaying && !isDone && (
+                      <>
+                        <button
+                          onClick={() => onMoveUp(item.id)}
+                          disabled={!canMoveUp}
+                          className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/20 hover:bg-gray-600/40 disabled:opacity-35 disabled:pointer-events-none text-gray-300 text-sm transition-all active:scale-[0.92]"
+                          title="เลื่อนขึ้น"
+                        >↑</button>
+                        <button
+                          onClick={() => onMoveDown(item.id)}
+                          disabled={!canMoveDown}
+                          className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-700/20 hover:bg-gray-600/40 disabled:opacity-35 disabled:pointer-events-none text-gray-300 text-sm transition-all active:scale-[0.92]"
+                          title="เลื่อนลง"
+                        >↓</button>
+                      </>
+                    )}
                     {!isNowPlaying && !isDone && (
                       <button
                         onClick={() => onPlayNow(item.id)}

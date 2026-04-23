@@ -6,11 +6,14 @@ import type { QueueItem } from '@/types'
 export function useQueue(roomCode: string) {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [queueHash, setQueueHash] = useState('')
 
   const fetchQueue = useCallback(async () => {
     try {
       const res = await fetch(`/api/queue?room=${roomCode}`)
       const data = await res.json()
+      const hash = res.headers.get('X-Queue-Hash') ?? ''
+      if (hash) setQueueHash(hash)
       setQueue(data)
     } catch {
       console.error('Failed to fetch queue')
@@ -36,7 +39,7 @@ export function useQueue(roomCode: string) {
     return () => es.close()
   }, [roomCode, fetchQueue])
 
-  return { queue, loading, fetchQueue }
+  return { queue, loading, fetchQueue, queueHash }
 }
 
 export function usePlayerSSE(
@@ -46,10 +49,14 @@ export function usePlayerSSE(
 ) {
   const onQueueUpdateRef = useRef(onQueueUpdate)
   const onPlayerCommandRef = useRef(onPlayerCommand)
-  onQueueUpdateRef.current = onQueueUpdate
-  onPlayerCommandRef.current = onPlayerCommand
+
+  useEffect(() => {
+    onQueueUpdateRef.current = onQueueUpdate
+    onPlayerCommandRef.current = onPlayerCommand
+  }, [onQueueUpdate, onPlayerCommand])
 
   const lastSeqRef = useRef<number>(-1)
+  const lastQueueHashRef = useRef<string>('')
 
   useEffect(() => {
     const es = new EventSource(`/api/events?room=${roomCode}`)
@@ -68,6 +75,13 @@ export function usePlayerSSE(
       try {
         const res = await fetch(`/api/player/state?room=${roomCode}`)
         if (!res.ok) return
+
+        const queueHash = res.headers.get('X-Queue-Hash') ?? ''
+        if (queueHash && queueHash !== lastQueueHashRef.current) {
+          lastQueueHashRef.current = queueHash
+          onQueueUpdateRef.current()
+        }
+
         const { command, seq } = await res.json() as { command: 'play' | 'pause' | 'restart'; seq: number }
         if (lastSeqRef.current === -1 || lastSeqRef.current === -2) {
           lastSeqRef.current = seq
@@ -80,16 +94,12 @@ export function usePlayerSSE(
       } catch {}
     }
 
-    const pollQueue = () => onQueueUpdateRef.current()
-
     pollCommand()
     const commandInterval = setInterval(pollCommand, 500)
-    const queueInterval   = setInterval(pollQueue, 2000)
 
     return () => {
       es.close()
       clearInterval(commandInterval)
-      clearInterval(queueInterval)
     }
   }, [roomCode])
 }

@@ -2,14 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { notifyQueueUpdate } from '@/lib/events'
 import { getRoomByCode, RoomError, roomNotFoundResponse } from '@/lib/rooms'
+import { checkDedupe, checkRateLimit, getClientFingerprint } from '@/lib/requestGuard'
+import { checkQueuePrecondition } from '@/lib/queueState'
 
 export const dynamic = 'force-dynamic'
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
+    const actor = getClientFingerprint(req.headers.get('x-forwarded-for'), req.headers.get('user-agent'))
+    const rate = checkRateLimit({ roomCode: room.code, actor, action: 'queue:delete', maxRequests: 20, windowMs: 10_000 })
+    if (!rate.allowed) {
+      return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 })
+    }
+
+    const dedupe = checkDedupe({ roomCode: room.code, actor, action: 'queue:delete', dedupeWindowMs: 400 })
+    if (!dedupe.allowed) {
+      return NextResponse.json({ error: 'Duplicate request ignored.' }, { status: 409 })
+    }
+
     const { id } = await params
     const sql = getDb()
+    const precondition = await checkQueuePrecondition(req, sql, Number(room.id))
+    if (precondition) return precondition
 
     const [item] = await sql`SELECT status FROM queue WHERE id = ${Number(id)} AND room_id = ${room.id}`
     await sql`DELETE FROM queue WHERE id = ${Number(id)} AND room_id = ${room.id}`
@@ -39,7 +54,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const room = await getRoomByCode(req.nextUrl.searchParams.get('room'))
     const { id } = await params
     const { action } = await req.json()
+    const actor = getClientFingerprint(req.headers.get('x-forwarded-for'), req.headers.get('user-agent'))
+
+    const rate = checkRateLimit({
+      roomCode: room.code,
+      actor,
+      action: `queue:${String(action ?? 'unknown')}`,
+      maxRequests: 20,
+      windowMs: 10_000,
+    })
+    if (!rate.allowed) {
+      return NextResponse.json({ error: 'Too many requests. Please slow down.' }, { status: 429 })
+    }
+
+    const dedupe = checkDedupe({
+      roomCode: room.code,
+      actor,
+      action: `queue:${String(action ?? 'unknown')}`,
+      dedupeWindowMs: 350,
+    })
+    if (!dedupe.allowed) {
+      return NextResponse.json({ error: 'Duplicate request ignored.' }, { status: 409 })
+    }
+
     const sql = getDb()
+    const precondition = await checkQueuePrecondition(req, sql, Number(room.id))
+    if (precondition) return precondition
 
     if (action === 'play_now') {
       await sql`UPDATE queue SET status = 'done' WHERE room_id = ${room.id} AND status = 'playing'`

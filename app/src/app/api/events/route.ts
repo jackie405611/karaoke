@@ -33,14 +33,14 @@ export async function GET(req: NextRequest) {
       emitter.on(playerEvent, onPlayerCommand)
       emitter.on(uiEvent, onUiCommand)
 
-      // Keepalive ping every 25s to prevent proxy/browser timeouts
+      // Keepalive ping every 20s for better proxy/mobile network compatibility
       const keepalive = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(': ping\n\n'))
         } catch {
           clearInterval(keepalive)
         }
-      }, 25_000)
+      }, 20_000)
 
       cleanup = () => {
         clearInterval(keepalive)

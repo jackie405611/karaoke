@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getRoomByCode, RoomError } from '@/lib/rooms'
+import { attachQueueStateHeaders, getQueueState } from '@/lib/queueState'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,7 +14,12 @@ export async function GET(req: NextRequest) {
     await sql`INSERT INTO player_state (room_id) VALUES (${room.id}) ON CONFLICT DO NOTHING`
 
     const [row] = await sql`SELECT command, seq, queue_visible FROM player_state WHERE room_id = ${room.id}`
-    return NextResponse.json({ command: row.command, seq: Number(row.seq), queue_visible: row.queue_visible })
+
+    const meta = await getQueueState(sql, Number(room.id))
+    return attachQueueStateHeaders(
+      NextResponse.json({ command: row.command, seq: Number(row.seq), queue_visible: row.queue_visible }),
+      meta
+    )
   } catch (err) {
     if (err instanceof RoomError) {
       // Return stable sentinel so poller never fires spuriously
