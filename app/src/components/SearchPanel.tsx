@@ -25,7 +25,7 @@ export default function SearchPanel({ onAddSong }: Props) {
     setError('')
     setResults([])
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+      const res = await fetch(`/api/search?q=${encodeURIComponent(`${q} คาราโอเกะ karaoke`)}`)
       const data = await res.json()
       if (!res.ok) {
         if (data.error === 'NO_API_KEY') {
