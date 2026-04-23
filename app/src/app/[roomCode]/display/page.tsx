@@ -136,45 +136,43 @@ export default function RoomDisplayPage() {
         </div>
       </div>
 
-      {/* Queue overlay panel — slides in/out from right */}
+      {/* Queue overlay — top-left, below header, slides in/out from left */}
       <div
-        className={`absolute top-0 right-0 bottom-0 w-72 bg-black/80 backdrop-blur-sm flex flex-col transition-transform duration-300 ease-in-out ${
-          queueVisible ? 'translate-x-0' : 'translate-x-full'
+        className={`absolute left-0 top-16 w-64 max-h-[65vh] flex flex-col overflow-hidden transition-transform duration-300 ease-in-out ${
+          queueVisible ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="px-4 py-3 border-b border-white/10 flex-shrink-0">
-          <p className="text-white/50 text-xs uppercase tracking-widest font-semibold">คิวเพลง</p>
+        <div className="px-4 py-2 flex-shrink-0">
+          <p className="text-white/60 text-[11px] uppercase tracking-widest font-bold">คิวเพลง</p>
         </div>
-        <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+        <div className="overflow-y-auto p-3 pt-1 flex flex-col gap-2">
           {upcomingQueue.length === 0 ? (
-            <p className="text-white/25 text-sm text-center py-10">คิวว่าง</p>
+            <p className="text-white/40 text-sm text-center py-6">คิวว่าง</p>
           ) : (
             upcomingQueue.map((item) => {
               const isNowPlaying = item.status === 'playing'
               return (
                 <div
                   key={item.id}
-                  className={`flex gap-3 items-center p-2 rounded-xl transition-colors ${
-                    isNowPlaying
-                      ? 'bg-red-900/50 border border-red-700/40'
-                      : 'bg-white/5'
+                  className={`flex gap-2.5 items-center p-2 rounded-xl bg-black/50 ${
+                    isNowPlaying ? 'ring-1 ring-red-600/50' : ''
                   }`}
                 >
-                  <div className="relative w-14 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
+                  <div className="relative w-12 h-9 flex-shrink-0 rounded-lg overflow-hidden bg-gray-800">
                     <Image
                       src={item.thumbnail}
                       alt={item.title}
                       fill
-                      sizes="56px"
+                      sizes="48px"
                       className="object-cover"
                       unoptimized
                     />
                   </div>
                   <div className="min-w-0">
-                    <p className={`text-sm font-medium truncate leading-snug ${isNowPlaying ? 'text-white' : 'text-white/65'}`}>
+                    <p className={`text-sm font-medium truncate leading-snug ${isNowPlaying ? 'text-white' : 'text-white/75'}`}>
                       {item.title}
                     </p>
-                    <p className="text-xs text-white/35 truncate mt-0.5">
+                    <p className="text-xs text-white/45 truncate mt-0.5">
                       🎤 {item.requested_by}
                     </p>
                   </div>
